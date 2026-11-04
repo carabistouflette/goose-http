@@ -11,6 +11,9 @@
   an immediate-reset metadata capability probe for older libcurl backends.
 - Fix CI evidence uploads from the hidden build directory; retain per-mode
   reports and failure reproducers using an explicit file allowlist.
+- Add offline coverage-guided fuzzing for the metadata validator using Clang libFuzzer
+  with AddressSanitizer and UndefinedBehaviorSanitizer, exercising body parsing,
+  header decoding, dual partitioned inputs, and revision/status boundaries.
 
 ## 0.1.0 — 2026-11-04 (experimental prerelease)
 

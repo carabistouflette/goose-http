@@ -10,6 +10,7 @@ METADATA_SAMPLES ?= 5
 METADATA_CPU ?=
 METADATA_FUZZ_CASES ?= 10000
 METADATA_FUZZ_SEED ?= 491
+METADATA_COVERAGE_RUNS ?= 10000
 RUNTIME_WRAPS = -Wl,--wrap=curl_global_init -Wl,--wrap=curl_version_info -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_getinfo
 DNS_WRAPS = -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_cleanup
 BENCH_ITERATIONS ?= 100
@@ -20,7 +21,7 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
 FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
 .NOTPARALLEL:
-.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize metadata-build metadata-test metadata-sanitize metadata-bench metadata-fuzz metadata-fuzz-sanitize
+.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize metadata-build metadata-test metadata-sanitize metadata-bench metadata-fuzz metadata-fuzz-sanitize metadata-coverage-fuzz
 setup:
 	./scripts/setup-goose.sh
 format:
@@ -34,6 +35,7 @@ check:
 	"$(GOOSE)" check examples/toolchain-metadata.goose
 	"$(GOOSE)" check tests/metadata.goose
 	"$(GOOSE)" check tests/metadata_fuzz.goose
+	"$(GOOSE)" check tests/metadata_coverage.goose
 	"$(GOOSE)" check bench/metadata.goose
 	"$(GOOSE)" check bench/bench.goose
 	python3 -m py_compile scripts/*.py tests/*.py bench/*.py
@@ -114,3 +116,13 @@ metadata-fuzz:
 metadata-fuzz-sanitize:
 	python3 scripts/metadata-test-build.py --goose "$(abspath $(GOOSE))" --cc "$(SANITIZER_CC)" --mode sanitize --source tests/metadata_fuzz.goose --output .build/metadata-fuzz-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/metadata_fuzz.py .build/metadata-fuzz-sanitize --cases $(METADATA_FUZZ_CASES) --seed $(METADATA_FUZZ_SEED) --label "$(SANITIZER_CC)-asan-ubsan" --report .build/metadata-fuzz-$(notdir $(SANITIZER_CC))-sanitize-results.json
+
+metadata-coverage-fuzz:
+	mkdir -p .build/metadata-coverage-corpus
+	python3 scripts/metadata-fuzz-seeds.py
+	"$(GOOSE)" -o .build/metadata_coverage_export.c --header .build/metadata_coverage_export.h --standalone tests/metadata_coverage.goose
+	$(FUZZ_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined -c tests/metadata_coverage.c -o .build/metadata_coverage.o
+	$(FUZZ_CC) -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined -Wno-unterminated-string-initialization -Wno-align-mismatch -c .build/metadata_coverage_export.c -o .build/metadata_coverage_export.o
+	$(FUZZ_CC) -fsanitize=fuzzer,address,undefined -pthread .build/metadata_coverage.o .build/metadata_coverage_export.o -lm -ldl -o .build/metadata-coverage-fuzz
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 .build/metadata-coverage-fuzz -runs=$(METADATA_COVERAGE_RUNS) -seed=491 -max_len=65536 -timeout=5 -artifact_prefix=.build/ .build/metadata-coverage-corpus
+

@@ -37,6 +37,30 @@ Crashes/timeouts preserve the batch as `.build/metadata-fuzz-crash.bin`.
 Python optimization is rejected because oracle assertions must stay active.
 Run campaigns serially per checkout: corpus and failure paths are shared.
 
+## Coverage-guided metadata validator fuzzing
+
+`make metadata-coverage-fuzz` builds an offline coverage-guided harness using Clang
+libFuzzer with AddressSanitizer and UndefinedBehaviorSanitizer instrumentation.
+The harness exports `fuzz_metadata_validate` from `tests/metadata_coverage.goose`
+into standalone C, driven by `tests/metadata_coverage.c`.
+
+Seed inputs are populated by `scripts/metadata-fuzz-seeds.py` into
+`.build/metadata-coverage-corpus`, containing valid JSON documents, UTF-8/Unicode
+escapes, surrogate edge cases, nested structures, boundary numbers, and raw HTTP
+headers with `identity` and non-identity encoding variations.
+
+Each fuzzer iteration exercises five distinct paths:
+1. Direct body fuzzing with valid revision and valid HTTP/1.1 200 identity headers.
+2. Direct header fuzzing with valid revision and valid JSON document body.
+3. Dual split fuzzing: the first two bytes determine a partition point between headers and body.
+4. Arbitrary revision validation with valid body and headers.
+5. Status code variation.
+
+On any rejection, the harness asserts that returned metadata fields remain empty.
+On acceptance, it verifies SHA matching, valid UTF-8 across all fields, non-empty HTML URL,
+and absence of carriage returns or newlines in commit subjects. Memory safety and leak
+checks run under ASan and UBSan. Override `METADATA_COVERAGE_RUNS` to extend a campaign.
+
 `make test` exercises Goose run/release/debug builds, owned outputs and compiler
 lifetime rejection, plus native loopback HTTP/1/TLS, callback/option/allocation
 faults and DNS cleanup. The runtime fault driver uses a fresh process per mode:
