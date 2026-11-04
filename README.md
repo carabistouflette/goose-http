@@ -2,8 +2,10 @@
 
 A small, bounded synchronous HTTP client for the
 [Goose programming language](https://github.com/aardappel/goose). Apache-2.0.
-Experimental API; no tagged release yet. Tested on Linux x86-64; POSIX native adapter.
+Experimental 0.1.0 API; no compatibility promise before 1.0. Tested on Linux x86-64; POSIX native adapter.
 macOS and Windows are not validated/supported in this initial version.
+
+See [release notes and validation evidence](CHANGELOG.md) for the initial prerelease.
 
 GET and binary POST, explicit request headers and transfer timeouts, bounded response
 body/header buffers, and verified TLS through a private libcurl adapter. Goose
