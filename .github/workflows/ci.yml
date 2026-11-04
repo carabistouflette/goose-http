@@ -1,0 +1,24 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install native dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build python3 pkg-config libcurl4-openssl-dev openssl clang
+      - run: make setup
+      - run: make check test
+      - run: make sanitize SANITIZER_CC=gcc
+      - run: make sanitize SANITIZER_CC=clang
+      - run: make fuzz FUZZ_RUNS=10000
+      - run: make bench BENCH_ITERATIONS=10
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: benchmark-samples
+          path: .build/bench.json
+          if-no-files-found: ignore

@@ -15,7 +15,8 @@ malformed input and ownership. Run `make format`, `make check test`, and
 `git diff --check`. Native changes require `make sanitize SANITIZER_CC=gcc` and
 `make sanitize SANITIZER_CC=clang`, plus the bounded fuzz harness. Request
 independent correctness, security and performance reviews and fix findings.
-Keep CI passing. Compiler changes require a reviewed full upstream commit and
+Keep CI passing. Report vulnerabilities privately through the process in
+[SECURITY.md](SECURITY.md). Compiler changes require a reviewed full upstream commit and
 complete validation. Never import private workspace notes into published code.
 
 Profile before optimizing. Preserve validation. Benchmarks retain raw samples,
