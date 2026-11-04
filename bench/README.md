@@ -52,3 +52,5 @@ defaults to allowed CPU 2, otherwise the first allowed CPU; override
 Override `METADATA_REQUESTS`, `METADATA_ITERATIONS` and `METADATA_SAMPLES` for
 longer or smoke runs. The explicit live CLI is not part of normal benchmark/test
 targets. See [the consumer contract](../docs/HONK_METADATA.md).
+
+[Recorded metadata results](METADATA_RESULTS.md) retain raw samples and full provenance.

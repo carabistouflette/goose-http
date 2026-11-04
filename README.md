@@ -11,7 +11,7 @@ owns returned storage. Redirects are returned to the caller for an explicit
 policy. HTTPS is the default; cleartext HTTP needs `allow_http: true`.
 
 ```goose
-import http from "carabistouflette/goose-http@c4f62ba753006fb066c3b21328a5e736fbcecd5d";
+import http from "carabistouflette/goose-http@c2310d8403d93b24b65eb45e9dae11e36183514d";
 import std;
 
 fn main() {

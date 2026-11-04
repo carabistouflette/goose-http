@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-04T13:28:58.849435+00:00",
+  "source_revision": "c2310d8403d93b24b65eb45e9dae11e36183514d",
+  "source_dirty": false,
+  "source_sha256": {
+    "http.goose": "d55f7fcc99718d28a8e8d3b800af8fd46be9772c7456d3f23cc6ac99c0026200",
+    "http.build": "262a70daedf657d993f54278addf7c718da8c2ccf8971640fa436ee1da3f1ec3",
+    "CMakeLists.txt": "8ff69c4076c269757632952678f35f3ede119517d161150857bc09d737610c56",
+    "native/http.c": "5871d9ad107c8087830cae2a6070d306eb5776917212e961acd4086ed42d0334",
+    "native/http.h": "54b063571a015100056288ac614a81af37c0cb32eca198490f733196552c8078",
+    "examples/honk_metadata.goose": "6ffbbaabe73db968c0f8286d0f3cf035986c4ad562ceec850c7b134c0f759150",
+    "examples/toolchain-metadata.goose": "38e7720c82dbf8c2cf3bdc02245fdb19da9df18eef2179e017a60c7432784bb1",
+    "bench/metadata.goose": "a215914406e79cee8dcc32ece8371a1e2d746a1570e529f37fce53c7cad77bfb",
+    "bench/metadata-measure.py": "ba255ed1ff0b983a624fabf3991bb699d18e134ccbab1d9567477d9b972e4116",
+    "tests/metadata.py": "2b337cec0b0b8d9ef5699758a662bbe05299838d46b224defc37de19cdb0e6ea",
+    "tests/metadata_transport.c": "19d347b71d232033c5d82225663f8510b7e57d7d8a47e9a439e35d9a0bfe3b8e",
+    "scripts/metadata-test-build.py": "d19b4dfeb5fca28006c1114129eb587790a8874397ec6a0eb1550419cf989ee9"
+  },
+  "goose_revision": "eadca409f68210893f366e60d0c2f0dc29a339be",
+  "goose_version": "goose eadca40 (runtime 3025e5810379)",
+  "text_revision": "46059e30be79ece6efd4317eb0adc6d213c808ab",
+  "compiler": "gcc (GCC) 16.2.1 20260810\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+  "flags": "-O2 --standalone",
+  "libcurl": "8.23.0",
+  "libcurl_flags": "-lcurl",
+  "platform": "Linux-7.2.11-arch1-1-x86_64-with-glibc2.44",
+  "cpu_model": "Intel(R) Core(TM) Ultra 7 258V",
+  "original_allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "affinity": [
+    2
+  ],
+  "fixture_bytes": 7972,
+  "fixture_sha256": "3867e9d6c8009433271e66813192f2da75e0234e579f184fd6ceaf808b7fa9b6",
+  "body_limit": 262144,
+  "header_limit": 32768,
+  "transfer_timeout_ms": 5000,
+  "shared_host": true,
+  "requests_per_sample": 10,
+  "validation_iterations_per_sample": 2000,
+  "tls_cli_elapsed_ns": [
+    185280611,
+    190458301,
+    198313822,
+    225624978,
+    194224477
+  ],
+  "validation_raw": [
+    {
+      "iterations": 2000,
+      "warmup": 100,
+      "elapsed_ns": 49630631,
+      "checksum": 474600
+    },
+    {
+      "iterations": 2000,
+      "warmup": 100,
+      "elapsed_ns": 51044975,
+      "checksum": 474600
+    },
+    {
+      "iterations": 2000,
+      "warmup": 100,
+      "elapsed_ns": 51254539,
+      "checksum": 474600
+    },
+    {
+      "iterations": 2000,
+      "warmup": 100,
+      "elapsed_ns": 51612902,
+      "checksum": 474600
+    },
+    {
+      "iterations": 2000,
+      "warmup": 100,
+      "elapsed_ns": 50743671,
+      "checksum": 474600
+    }
+  ],
+  "boundaries": [
+    "TLS workload includes fresh CLI process/runtime startup, public buffer preparation, real local TLS, fixture-server scheduling/work, fetch, validation, escaping, output capture and Python decoding/assertions.",
+    "Only a test-linked transport wrapper rewrites the fixed GitHub URL to localhost and trusts the ephemeral CA. Verification and request policy remain enabled.",
+    "Fixture generation/certificate creation and two warmup fetches are excluded; every measured response is checked.",
+    "Validation workload uses internal monotonic timing, excludes 100 warmups and file reading; includes parser validation, owned Info, JSON escaping and assertions.",
+    "Parser input is synthetic GitHub-shaped metadata with ignored file/patch fields. No live-network timing or throughput ranking is claimed.",
+    "CPU affinity is best effort on a shared machine, not exclusive isolation. No timing thresholds are used."
+  ]
+}
