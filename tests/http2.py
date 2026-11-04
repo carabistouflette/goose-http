@@ -34,6 +34,7 @@ class Handler(socketserver.BaseRequestHandler):
             connection.initiate_connection()
             self.request.sendall(connection.data_to_send())
             while data := self.request.recv(65536):
+                reset_count = ack_reset_count = 0
                 for event in connection.receive_data(data):
                     if isinstance(event, h2.events.RequestReceived):
                         requests[event.stream_id] = [dict(event.headers), bytearray()]
@@ -49,9 +50,8 @@ class Handler(socketserver.BaseRequestHandler):
                     elif isinstance(event, h2.events.PingAckReceived):
                         stream = reset_wait.pop(event.ping_data)
                         connection.reset_stream(stream, error_code=2)
-                        with self.server.lock:
-                            self.server.resets += 1
-                            self.server.reset_acks += 1
+                        reset_count += 1
+                        ack_reset_count += 1
                     elif isinstance(event, h2.events.StreamEnded):
                         headers, upload = requests.pop(event.stream_id)
                         path = headers[':path']
@@ -98,8 +98,7 @@ class Handler(socketserver.BaseRequestHandler):
                                 connection.ping(token)
                             else:
                                 connection.reset_stream(event.stream_id, error_code=2)
-                                with self.server.lock:
-                                    self.server.resets += 1
+                                reset_count += 1
                             continue
                         elif path != '/binary':
                             raise AssertionError('unknown fixture path: ' + path)
@@ -125,6 +124,9 @@ class Handler(socketserver.BaseRequestHandler):
                     else:
                         pending[stream][1] = offset
                 self.request.sendall(connection.data_to_send())
+                with self.server.lock:
+                    self.server.resets += reset_count
+                    self.server.reset_acks += ack_reset_count
         except (OSError, h2.exceptions.H2Error):
             # Client-side timeouts, bounded-output aborts and resets close TLS.
             pass
