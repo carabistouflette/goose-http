@@ -69,3 +69,23 @@ HTTPS, connection establishment, network throughput or application latency. The
 loopback HTTP benchmark in [README.md](README.md) measures a different boundary.
 Use representative application profiles before making broader performance
 claims. Timing is observational; CI checks execution rather than thresholds.
+
+## Recorded sample
+
+[Raw paired samples](results/2026-11-04-native-profile.json) compare correctness
+baseline `9a8bed6` with clean source
+`a87429314e9925637366b2d59a8e86341f1eff32`, using the exact source/harness hashes
+in the report. Five paired samples ran on CPU 1 with GCC 16.2.1 and libcurl 8.23.0
+on an Intel Core Ultra 7 258V. Raw CPU and wall durations are retained for every
+workload, including unchanged small-header and body-copy paths.
+
+The changes replace the unconditional large empty-header stack scratch with a
+temporary allocation sized to that header, and append through the last list node
+using libcurl's own link updates. The production build enforces a 16 KiB static
+frame warning budget for the adapter. This is a compiler/build check, not a
+promise about the total stack consumed by libcurl or its callees.
+
+The public API still initializes its configured output capacities before each
+request. Choose limits appropriate to expected responses when preparation cost
+matters. This native harness excludes that Goose preparation cost; it also does
+not establish a network-throughput ranking.

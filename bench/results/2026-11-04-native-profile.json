@@ -1,0 +1,834 @@
+{
+  "schema": 1,
+  "recorded_utc": "2026-11-04T09:16:58.782842+00:00",
+  "baseline_revision": "9a8bed6a9017ee44c077da13f5edc1a9985ddb4f",
+  "current_revision": "a87429314e9925637366b2d59a8e86341f1eff32",
+  "current_source_dirty": false,
+  "source_sha256": {
+    "baseline": {
+      "native/http.c": "6c1509d06b2129428bff0fb120d41c90c7d50e2f00dd0b33ee89f9da1103c2e0",
+      "native/http.h": "54b063571a015100056288ac614a81af37c0cb32eca198490f733196552c8078"
+    },
+    "current": {
+      "native/http.c": "fa6b11cf325ab74efa3c573fe15e38798b118d87dd4c46b34e9009c541462579",
+      "native/http.h": "54b063571a015100056288ac614a81af37c0cb32eca198490f733196552c8078"
+    }
+  },
+  "harness_sha256": {
+    "bench/profile.c": "7c0d8152d7f10f538773ff75af68056d555d186dd3ac5baace5ef486d4cec4e1",
+    "bench/profile.py": "cd4651f4bdf2f57ed7388a71d15f360e650985b6b7bd15bcf8bd743c42ba6589"
+  },
+  "compiler_command": "cc",
+  "compiler": "cc (GCC) 16.2.1 20260810\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+  "flags": [
+    "-std=c11",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-O2",
+    "-pthread"
+  ],
+  "link_flags": [
+    "-Wl,--wrap=curl_easy_perform"
+  ],
+  "libcurl": "8.23.0",
+  "libcurl_runtime": {
+    "baseline": "libcurl/8.23.0 OpenSSL/3.6.5 zlib/1.3.2 brotli/1.2.1 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.5 libssh2/1.11.1 nghttp2/1.70.0 ngtcp2/1.25.0 nghttp3/1.18.0 mit-krb5/1.22.2",
+    "current": "libcurl/8.23.0 OpenSSL/3.6.5 zlib/1.3.2 brotli/1.2.1 zstd/1.5.7 libidn2/2.3.8 libpsl/0.21.5 libssh2/1.11.1 nghttp2/1.70.0 ngtcp2/1.25.0 nghttp3/1.18.0 mit-krb5/1.22.2"
+  },
+  "libcurl_build_flags": "-lcurl",
+  "platform": "Linux-7.2.11-arch1-1-x86_64-with-glibc2.44",
+  "machine": "x86_64",
+  "processor": "Intel(R) Core(TM) Ultra 7 258V",
+  "cpu_count": 8,
+  "original_allowed_cpus": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "measured_cpu_affinity": [
+    1
+  ],
+  "goose_revision": "eadca409f68210893f366e60d0c2f0dc29a339be",
+  "stack_usage": {
+    "baseline": {
+      "gh_request_frames": [
+        {
+          "bytes": 74128,
+          "kind": "static"
+        }
+      ],
+      "max_gh_request_frame_bytes": 74128
+    },
+    "current": {
+      "gh_request_frames": [
+        {
+          "bytes": 8576,
+          "kind": "static"
+        }
+      ],
+      "max_gh_request_frame_bytes": 8576
+    }
+  },
+  "boundaries": [
+    "Setup includes native validation, URL parsing, easy handle/list allocation, option setup, getinfo and cleanup.",
+    "curl_easy_perform returns CURLE_RECV_ERROR without DNS, sockets, TLS or HTTP parsing; each setup call must report GH_TRANSPORT and zero returned lengths.",
+    "Callback workloads call the selected implementation's actual body callback through a volatile function pointer using its private buffer type, reset per copy.",
+    "Each process performs 1000 excluded warmup iterations before internal wall/process-CPU clocks. Process startup and curl global initialization are excluded.",
+    "Callback buffers are allocated and initialized before timing; setup output buffers are bounded 4096/1024 bytes and not prezeroed.",
+    "Setup packed header formatting is included once per timed loop, not per request. Assertions and checksums are included; no Goose public preparation is measured.",
+    "The reported production gh_request frame excludes its callees, compiler/runtime stacks and the benchmark driver.",
+    "Samples alternate baseline/current order. Timing is observational, with no thresholds or network-throughput ranking."
+  ],
+  "workloads": [
+    {
+      "name": "setup_zero",
+      "request_header_count": 0,
+      "blank_request_values": false,
+      "callback_bytes": 0,
+      "iterations_per_sample": 20000,
+      "samples": [
+        {
+          "sample": 0,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 45235393,
+            "cpu_ns": 45034332,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 45105047,
+            "cpu_ns": 44810589,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 1,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 44119495,
+            "cpu_ns": 43933445,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 44677516,
+            "cpu_ns": 44485502,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 2,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 44000772,
+            "cpu_ns": 43839652,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 42986355,
+            "cpu_ns": 42837090,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 3,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 44192377,
+            "cpu_ns": 43866569,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 44110993,
+            "cpu_ns": 43947116,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 4,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 43598671,
+            "cpu_ns": 43332304,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 43625283,
+            "cpu_ns": 43503281,
+            "checksum": 1239000
+          }
+        }
+      ],
+      "summary": {
+        "baseline": {
+          "median_cpu_ns_per_iteration": 2197.3558,
+          "median_wall_ns_per_iteration": 2205.54965
+        },
+        "current": {
+          "median_cpu_ns_per_iteration": 2193.32845,
+          "median_wall_ns_per_iteration": 2205.97475
+        }
+      }
+    },
+    {
+      "name": "setup_one",
+      "request_header_count": 1,
+      "blank_request_values": false,
+      "callback_bytes": 0,
+      "iterations_per_sample": 20000,
+      "samples": [
+        {
+          "sample": 0,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 46046753,
+            "cpu_ns": 45519884,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 46686189,
+            "cpu_ns": 46344230,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 1,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 47805253,
+            "cpu_ns": 47500883,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 47834475,
+            "cpu_ns": 47648994,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 2,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 47056367,
+            "cpu_ns": 46874807,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 47485432,
+            "cpu_ns": 47064825,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 3,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 47947563,
+            "cpu_ns": 47762491,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 46995189,
+            "cpu_ns": 46654593,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 4,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 46934043,
+            "cpu_ns": 46776517,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 47343281,
+            "cpu_ns": 47163079,
+            "checksum": 1239000
+          }
+        }
+      ],
+      "summary": {
+        "baseline": {
+          "median_cpu_ns_per_iteration": 2338.82585,
+          "median_wall_ns_per_iteration": 2349.75945
+        },
+        "current": {
+          "median_cpu_ns_per_iteration": 2358.15395,
+          "median_wall_ns_per_iteration": 2374.2716
+        }
+      }
+    },
+    {
+      "name": "setup_64",
+      "request_header_count": 64,
+      "blank_request_values": false,
+      "callback_bytes": 0,
+      "iterations_per_sample": 20000,
+      "samples": [
+        {
+          "sample": 0,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 317326613,
+            "cpu_ns": 315969019,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 257258632,
+            "cpu_ns": 256274290,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 1,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 258807732,
+            "cpu_ns": 257453864,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 323535541,
+            "cpu_ns": 322418512,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 2,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 315547778,
+            "cpu_ns": 314023740,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 252774584,
+            "cpu_ns": 251987881,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 3,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 258815436,
+            "cpu_ns": 257615106,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 335598358,
+            "cpu_ns": 333754053,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 4,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 338517771,
+            "cpu_ns": 336709003,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 257016994,
+            "cpu_ns": 255838079,
+            "checksum": 1239000
+          }
+        }
+      ],
+      "summary": {
+        "baseline": {
+          "median_cpu_ns_per_iteration": 16120.9256,
+          "median_wall_ns_per_iteration": 16176.77705
+        },
+        "current": {
+          "median_cpu_ns_per_iteration": 12813.7145,
+          "median_wall_ns_per_iteration": 12862.9316
+        }
+      }
+    },
+    {
+      "name": "setup_64_blank",
+      "request_header_count": 64,
+      "blank_request_values": true,
+      "callback_bytes": 0,
+      "iterations_per_sample": 20000,
+      "samples": [
+        {
+          "sample": 0,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 312092264,
+            "cpu_ns": 310679083,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 267394792,
+            "cpu_ns": 265844388,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 1,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 264771332,
+            "cpu_ns": 262939604,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 314350078,
+            "cpu_ns": 312261185,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 2,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 312364266,
+            "cpu_ns": 311241687,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 253917204,
+            "cpu_ns": 253069555,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 3,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 258921193,
+            "cpu_ns": 257644218,
+            "checksum": 1239000
+          },
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 308253328,
+            "cpu_ns": 306705569,
+            "checksum": 1239000
+          }
+        },
+        {
+          "sample": 4,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 307546593,
+            "cpu_ns": 306414966,
+            "checksum": 1239000
+          },
+          "current": {
+            "iterations": 20000,
+            "warmup_iterations": 1000,
+            "wall_ns": 250472579,
+            "cpu_ns": 249625323,
+            "checksum": 1239000
+          }
+        }
+      ],
+      "summary": {
+        "baseline": {
+          "median_cpu_ns_per_iteration": 15533.95415,
+          "median_wall_ns_per_iteration": 15604.6132
+        },
+        "current": {
+          "median_cpu_ns_per_iteration": 12882.2109,
+          "median_wall_ns_per_iteration": 12946.05965
+        }
+      }
+    },
+    {
+      "name": "callback_4096",
+      "request_header_count": 0,
+      "blank_request_values": false,
+      "callback_bytes": 4096,
+      "iterations_per_sample": 2000000,
+      "samples": [
+        {
+          "sample": 0,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 150841423,
+            "cpu_ns": 149465310,
+            "checksum": 8196096000
+          },
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 149043606,
+            "cpu_ns": 148364167,
+            "checksum": 8196096000
+          }
+        },
+        {
+          "sample": 1,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 149984374,
+            "cpu_ns": 149380614,
+            "checksum": 8196096000
+          },
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 148940313,
+            "cpu_ns": 148180379,
+            "checksum": 8196096000
+          }
+        },
+        {
+          "sample": 2,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 151432318,
+            "cpu_ns": 150636079,
+            "checksum": 8196096000
+          },
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 146683714,
+            "cpu_ns": 146200706,
+            "checksum": 8196096000
+          }
+        },
+        {
+          "sample": 3,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 148386289,
+            "cpu_ns": 147580364,
+            "checksum": 8196096000
+          },
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 152014747,
+            "cpu_ns": 150951108,
+            "checksum": 8196096000
+          }
+        },
+        {
+          "sample": 4,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 157036472,
+            "cpu_ns": 155937288,
+            "checksum": 8196096000
+          },
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 162455004,
+            "cpu_ns": 161536716,
+            "checksum": 8196096000
+          }
+        }
+      ],
+      "summary": {
+        "baseline": {
+          "median_cpu_ns_per_iteration": 75.3180395,
+          "median_wall_ns_per_iteration": 75.716159
+        },
+        "current": {
+          "median_cpu_ns_per_iteration": 74.1820835,
+          "median_wall_ns_per_iteration": 74.521803
+        }
+      }
+    },
+    {
+      "name": "callback_16384",
+      "request_header_count": 0,
+      "blank_request_values": false,
+      "callback_bytes": 16384,
+      "iterations_per_sample": 2000000,
+      "samples": [
+        {
+          "sample": 0,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 559080397,
+            "cpu_ns": 554181223,
+            "checksum": 32784384000
+          },
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 503494501,
+            "cpu_ns": 502104397,
+            "checksum": 32784384000
+          }
+        },
+        {
+          "sample": 1,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 517791330,
+            "cpu_ns": 515864661,
+            "checksum": 32784384000
+          },
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 510301433,
+            "cpu_ns": 507791752,
+            "checksum": 32784384000
+          }
+        },
+        {
+          "sample": 2,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 516637187,
+            "cpu_ns": 513380715,
+            "checksum": 32784384000
+          },
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 512523478,
+            "cpu_ns": 510534771,
+            "checksum": 32784384000
+          }
+        },
+        {
+          "sample": 3,
+          "execution_order": [
+            "current",
+            "baseline"
+          ],
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 514767551,
+            "cpu_ns": 510676811,
+            "checksum": 32784384000
+          },
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 508280841,
+            "cpu_ns": 505485576,
+            "checksum": 32784384000
+          }
+        },
+        {
+          "sample": 4,
+          "execution_order": [
+            "baseline",
+            "current"
+          ],
+          "baseline": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 509146311,
+            "cpu_ns": 505932636,
+            "checksum": 32784384000
+          },
+          "current": {
+            "iterations": 2000000,
+            "warmup_iterations": 1000,
+            "wall_ns": 533323605,
+            "cpu_ns": 521989610,
+            "checksum": 32784384000
+          }
+        }
+      ],
+      "summary": {
+        "baseline": {
+          "median_cpu_ns_per_iteration": 253.895876,
+          "median_wall_ns_per_iteration": 255.1507165
+        },
+        "current": {
+          "median_cpu_ns_per_iteration": 255.3384055,
+          "median_wall_ns_per_iteration": 257.3837755
+        }
+      }
+    }
+  ]
+}
