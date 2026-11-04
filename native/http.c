@@ -133,12 +133,11 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
 
     CURL *curl = curl_easy_init();
     if (!curl) return GH_SETUP;
-    struct curl_slist *list = NULL;
+    struct curl_slist *list = NULL, *tail = NULL;
     int64_t result = GH_SETUP;
     CURLcode code = CURLE_OK;
     buffer body = {out.data, (size_t)out.len, 0, false};
     header_buffer head = {{headers.data, (size_t)headers.len, 0, false}, false, false};
-    char empty_line[65537];
     for (pos = 0; pos < (size_t)packed.len;) {
         /* libcurl treats 'Name:' as suppression; ';' explicitly sends an empty value. */
         const char *line = (const char *)packed.data + pos;
@@ -147,20 +146,26 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
         const char *value = colon + 1;
         while (*value == ' ' || *value == '\t') ++value;
         const char *wire = line;
+        char *empty_line = NULL;
         if (!*value) {
             size_t name_length = (size_t)(colon - line);
+            empty_line = malloc(name_length + 2);
+            if (!empty_line) goto done;
             memcpy(empty_line, line, name_length);
             empty_line[name_length] = ';'; empty_line[name_length + 1] = 0;
             wire = empty_line;
         }
-        struct curl_slist *next = curl_slist_append(list, wire);
+        /* The tail is itself a one-node list: libcurl owns all link updates. */
+        struct curl_slist *next = curl_slist_append(tail, wire);
+        free(empty_line);
         if (!next) goto done;
-        list = next;
+        if (!list) list = next;
+        tail = tail ? tail->next : next;
         pos += length + 1;
     }
-    struct curl_slist *next = curl_slist_append(list, "Expect:");
+    struct curl_slist *next = curl_slist_append(tail, "Expect:");
     if (!next) goto done;
-    list = next;
+    if (!list) list = next;
 #define SET(option, value) do { code = curl_easy_setopt(curl, option, value); if (code != CURLE_OK) goto done; } while (0)
     SET(CURLOPT_URL, address);
     SET(CURLOPT_PROTOCOLS_STR, allow_http ? "http,https" : "https");

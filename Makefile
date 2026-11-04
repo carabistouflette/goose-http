@@ -6,7 +6,7 @@ FUZZ_RUNS ?= 10000
 BENCH_ITERATIONS ?= 100
 CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
-FAIL_WRAPS = -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
+FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
 .NOTPARALLEL:
 .PHONY: setup format check test native sanitize fuzz bench
 setup:
