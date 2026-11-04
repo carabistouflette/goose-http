@@ -6,7 +6,7 @@ Applications own destinations, credentials and response interpretation.
 
 ## API
 
-`request(url, options, body, headers)` replaces caller-owned growable byte buffers
+`request(url, options, body, headers)` (pass a named `Options` variable by const reference) replaces caller-owned growable byte buffers
 and returns `Status { error, transport_code, status_code }`. `Options` holds method
 (GET or POST), request headers (`Header { name, value }` views), request body view,
 `timeout_ms` (default 30000), `body_limit` (default 1 MiB), `header_limit` (default

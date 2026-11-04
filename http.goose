@@ -51,7 +51,7 @@ fn valid_header(header: Header) -> bool {
 }
 
 // Inputs cannot borrow either output; the compiler checks lifetime separation.
-fn request(url: const u8[:], options: Options, body: u8[>..]&, headers: u8[>..]&) -> Status {
+fn request(url: const u8[:], options: const Options&, body: u8[>..]&, headers: u8[>..]&) -> Status {
     body.clear(); headers.clear();
     let invalid = Status { error: Error.InvalidInput };
     if url.len == 0 || url.len > 8192 || options.headers.len > 64 ||
@@ -59,6 +59,7 @@ fn request(url: const u8[:], options: Options, body: u8[>..]&, headers: u8[>..]&
         options.timeout_ms < 1 || options.timeout_ms > 86400000 ||
         options.body_limit < 0 || options.body_limit > 16777216 ||
         options.header_limit < 0 || options.header_limit > 262144 { return invalid; }
+    if !starts_with(url, "https://") && !(options.allow_http && starts_with(url, "http://")) { return invalid; }
     for c in url { if c <= 32 || c >= 127 || c == '#' { return invalid; } }
     var total: i64 = 0;
     for header in options.headers {
