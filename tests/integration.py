@@ -99,8 +99,8 @@ class Server(socketserver.ThreadingTCPServer):
 
 
 @contextlib.contextmanager
-def fixtures(include_ca=False):
-    """Yield HTTP and self-signed HTTPS origins, shutting down servers on failure."""
+def certificate():
+    """Create an ephemeral localhost-only certificate without changing system trust."""
     with tempfile.TemporaryDirectory(prefix="goose-http-test-") as folder:
         root = Path(folder)
         subprocess.run([
@@ -108,6 +108,13 @@ def fixtures(include_ca=False):
             "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
             "-keyout", str(root / "key.pem"), "-out", str(root / "cert.pem"),
         ], check=True, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        yield root
+
+
+@contextlib.contextmanager
+def fixtures(include_ca=False):
+    """Yield HTTP and self-signed HTTPS origins, shutting down servers on failure."""
+    with certificate() as root:
         with Server(("127.0.0.1", 0), Handler) as http, Server(("127.0.0.1", 0), Handler) as tls:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(root / "cert.pem", root / "key.pem")

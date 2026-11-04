@@ -14,3 +14,10 @@ Apache-2.0. `make setup` downloads its source into ignored `.toolchain/`, includ
 upstream third-party components and their notices. Those sources/build artifacts
 are not part of this library's source distribution. Keep upstream notices if
 redistributing the compiler or its dependencies.
+
+The optional HTTP/2 test server uses installed **hyper-h2**, **hpack** and
+**hyperframe**, each under the MIT license. These packages are used only by the
+test fixture and are not linked into applications or vendored here. See their
+upstream notices: [h2](https://github.com/python-hyper/h2/blob/master/LICENSE),
+[hpack](https://github.com/python-hyper/hpack/blob/master/LICENSE), and
+[hyperframe](https://github.com/python-hyper/hyperframe/blob/master/LICENSE).

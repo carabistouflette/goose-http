@@ -3,6 +3,7 @@ CC ?= gcc
 SANITIZER_CC ?= gcc
 FUZZ_CC ?= clang
 FUZZ_RUNS ?= 10000
+HTTP2_PYTHON ?= python3
 RUNTIME_WRAPS = -Wl,--wrap=curl_global_init -Wl,--wrap=curl_version_info -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_getinfo
 DNS_WRAPS = -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_cleanup
 BENCH_ITERATIONS ?= 100
@@ -13,7 +14,7 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
 FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
 .NOTPARALLEL:
-.PHONY: setup format check test native sanitize fuzz bench profile
+.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize
 setup:
 	./scripts/setup-goose.sh
 format:
@@ -73,3 +74,12 @@ bench:
 
 profile:
 	python3 bench/profile.py --baseline "$(PROFILE_BASELINE)" --iterations $(PROFILE_ITERATIONS) --samples $(PROFILE_SAMPLES) --cc "$(CC)"
+
+http2:
+	mkdir -p .build
+	$(CC) $(CFLAGS) -O2 -pthread tests/http2.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2
+	"$(HTTP2_PYTHON)" tests/http2.py .build/http2
+http2-sanitize:
+	mkdir -p .build
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/http2.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$(HTTP2_PYTHON)" tests/http2.py .build/http2-sanitize

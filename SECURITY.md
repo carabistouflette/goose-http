@@ -19,7 +19,7 @@ wait for a system resolver beyond the requested transfer timeout. Asynchronous
 DNS support alone does not guarantee cancellation. Do not rely on this API for
 a hard cancellation deadline. See the contract for resolver/build choices. See [the contract](docs/API.md).
 
-CI exercises Goose run/release/debug, ownership rejection, local HTTP/TLS,
-stalled-DNS cleanup, incomplete final headers, allocation fault injection, GCC/Clang AddressSanitizer/UndefinedBehaviorSanitizer and a
+CI exercises Goose run/release/debug, ownership rejection, local HTTP/1 and HTTP/2 TLS,
+stalled-DNS cleanup, incomplete final headers, startup/runtime and allocation fault injection, GCC/Clang AddressSanitizer/UndefinedBehaviorSanitizer and a
 network-disabled libFuzzer harness. These checks improve coverage; they do not
 prove arbitrary server responses safe independently of libcurl's own guarantees.

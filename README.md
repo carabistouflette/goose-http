@@ -92,3 +92,16 @@ no public service is needed. See [contribution rules](CONTRIBUTING.md) and
 The dedicated TLS test uses a test-only linker wrapper to trust its ephemeral
 certificate for successful TLS and hostname-mismatch cases. This injection adds
 no public CA option and does not change production or system trust settings.
+
+The optional real HTTP/2 suite requires libcurl built with HTTP/2 and Python
+`h2` 4.1+ (`python3-h2` on Debian/Ubuntu). These are test-only requirements:
+
+```sh
+make http2
+make http2-sanitize SANITIZER_CC=gcc
+make http2-sanitize SANITIZER_CC=clang
+```
+
+Use `HTTP2_PYTHON=/path/to/venv/bin/python` for an isolated Python environment.
+CI runs these targets explicitly. See [test coverage](tests/README.md) for the
+TLS fixture, runtime fault cases and remaining protocol coverage limits.
