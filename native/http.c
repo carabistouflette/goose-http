@@ -53,8 +53,13 @@ static bool valid_header(const uint8_t *p, size_t n) {
         ++colon;
     }
     if (!colon || colon == n) return false;
+    if (equal_name(p, colon, "accept-encoding")) {
+        size_t first = colon + 1;
+        while (first < n && (p[first] == ' ' || p[first] == '\t')) ++first;
+        return equal_name(p + first, n - first, "identity");
+    }
     static const char *const forbidden[] = {"host", "content-length", "transfer-encoding",
-        "connection", "proxy-connection", "te", "trailer", "upgrade", "expect", "accept-encoding"};
+        "connection", "proxy-connection", "te", "trailer", "upgrade", "expect"};
     for (size_t i = 0; i < sizeof forbidden / sizeof *forbidden; ++i)
         if (equal_name(p, colon, forbidden[i])) return false;
     for (size_t i = colon + 1; i < n; ++i)

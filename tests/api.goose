@@ -65,6 +65,16 @@ fn maximum_requests(base: const u8[:]) {
     status = http::request(str(base, "/echo"), post_options, body, headers);
     assert(http::success(status) && body == upload);
 }
+fn identity_header(base: const u8[:], value: const u8[:]) {
+    let fields = [http::Header { name: "aCcEpT-eNcOdInG", value: value }];
+    let options = http::Options { headers: fields, allow_http: true };
+    var body:    u8[>..] = [];
+    var headers: u8[>..] = [];
+    let status = http::request(str(base, "/identity-encoding"), options, body, headers);
+    assert(http::success(status) && body == "yes");
+    let compressed = http::request(str(base, "/gzip"), options, body, headers);
+    assert(http::success(compressed) && body.len > 2 && body[0] == 31 && body[1] == 139);
+}
 fn main() {
     let argv = args();
     assert(argv.len == 3);
@@ -154,6 +164,8 @@ fn main() {
     assert(contains(headers, "103 Early Hints") && contains(headers, "X-End: done"));
     status = http::request(str(base, "/gzip"), options, body, headers);
     assert(http::success(status) && body.len > 2 && body[0] == 31 && body[1] == 139);
+    for value in ["identity", "IDENTITY", "IdEnTiTy"] { identity_header(base, value); }
+    for value in ["", "gzip", "br", "*", "identity, gzip", "identity,identity", "identity;q=1", " identity", "identity ", "\tidentity", "identity\t"] { invalid_header("Accept-Encoding", value); }
     empty_header(base);
     maximum_requests(base);
     let defaults = http::Options { .. };

@@ -24,7 +24,10 @@ Validation rejects control/space/non-ASCII URL bytes, embedded credentials,
 schemes other than lowercase `https://` (or opted-in `http://`), empty host, URL fragments, non-token header names and header
 values outside printable ASCII plus horizontal tab. HTTP requires opt-in.
 Application headers cannot override Host, Content-Length, Transfer-Encoding,
-Connection, Proxy-Connection, TE, Trailer, Upgrade, Expect or Accept-Encoding.
+Connection, Proxy-Connection, TE, Trailer, Upgrade or Expect. Accept-Encoding is
+accepted only when its field value is exactly `identity` (ASCII case-insensitive;
+no whitespace, lists or parameters in the public Header value). This does not
+enable automatic response decompression.
 Empty/whitespace-only request header values send an empty field (libcurl's
 semicolon syntax internally), rather than suppressing that header.
 No automatic decompression. Transfer-decoded body bytes (chunk framing removed)

@@ -54,6 +54,8 @@ class Handler(socketserver.StreamRequestHandler):
                 data = response(upload if method == b"POST" else b"wrong method")
             elif path == b"/empty-header":
                 data = response(b"yes" if headers.get(b"x-empty") == b"" else b"no")
+            elif path == b"/identity-encoding":
+                data = response(b"yes" if headers.get(b"accept-encoding", b"").lower() == b"identity" else b"no")
             elif path == b"/status":
                 data = response(b"missing", b"404 Not Found")
             elif path == b"/redirect":

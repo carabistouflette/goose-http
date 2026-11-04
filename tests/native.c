@@ -84,6 +84,13 @@ int main(int argc, char **argv) {
     CHECK(call("/empty-header", 0, input(tab_header, sizeof tab_header - 1), none, 2000,
                out, sizeof out, head, sizeof head, meta) == OK);
     CHECK(meta[2] == 3 && !memcmp(out, "yes", 3));
+    static const char identity[] = "aCcEpT-eNcOdInG: IdEnTiTy\0";
+    CHECK(call("/identity-encoding", 0, input(identity, sizeof identity - 1), none, 2000,
+               out, sizeof out, head, sizeof head, meta) == OK);
+    CHECK(meta[2] == 3 && !memcmp(out, "yes", 3));
+    CHECK(call("/gzip", 0, input(identity, sizeof identity - 1), none, 2000,
+               out, sizeof out, head, sizeof head, meta) == OK);
+    CHECK(meta[2] > 2 && out[0] == 0x1f && out[1] == 0x8b);
     CHECK(gh_request(input(argv[2], strlen(argv[2])), 0, none, none, 2000, 0,
                      (gh_output){out, sizeof out}, (gh_output){head, sizeof head},
                      (gh_metadata){meta, 4}) == TRANSPORT);
@@ -108,7 +115,7 @@ int main(int argc, char **argv) {
                      (gh_metadata){meta, 4}) == INVALID);
     static const char *bad_headers[] = {"Host: evil", "cOnTeNt-LeNgTh: 5", "Transfer-Encoding: chunked",
         "Connection: keep-alive", "Proxy-Connection: x", "TE: trailers", "Trailer: x", "Upgrade: x",
-        "Expect: x", "Accept-Encoding: gzip", "X-Test: ok\r\nInjected: yes", "Bad Name: x", ": empty", "NoColon"};
+        "Expect: x", "Accept-Encoding: gzip", "Accept-Encoding: br", "Accept-Encoding:", "Accept-Encoding: identity,gzip", "Accept-Encoding: identity;q=1", "Accept-Encoding: identity ", "X-Test: ok\r\nInjected: yes", "Bad Name: x", ": empty", "NoColon"};
     for (size_t i = 0; i < sizeof bad_headers / sizeof *bad_headers; ++i)
         CHECK(call("/binary", 0, input(bad_headers[i], strlen(bad_headers[i]) + 1), none, 200,
                    out, sizeof out, head, sizeof head, meta) == INVALID);

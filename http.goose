@@ -44,7 +44,8 @@ fn valid_header(header: Header) -> bool {
     if header.name.len == 0 { return false; }
     for c in header.name { if !token(c) { return false; } }
     for c in header.value { if c != 9 && (c < 32 || c > 126) { return false; } }
-    for name in ["host", "content-length", "transfer-encoding", "connection", "proxy-connection", "te", "trailer", "upgrade", "expect", "accept-encoding"] {
+    if equal_name(header.name, "accept-encoding") { return equal_name(header.value, "identity"); }
+    for name in ["host", "content-length", "transfer-encoding", "connection", "proxy-connection", "te", "trailer", "upgrade", "expect"] {
         if equal_name(header.name, name) { return false; }
     }
     return true;
