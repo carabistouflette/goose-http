@@ -92,6 +92,11 @@ Tests use ephemeral loopback HTTP/TLS servers and an outer process deadline;
 no public service is needed. See [contribution rules](CONTRIBUTING.md) and
 [benchmark scope](bench/README.md).
 
+The [Honk source metadata reference consumer](docs/HONK_METADATA.md) demonstrates
+a fixed-origin HTTPS request, bounded JSON validation and escaped output.
+`make metadata-test` and both `metadata-sanitize` compiler passes exercise it
+without contacting GitHub. Its live CLI is explicitly opt-in.
+
 The dedicated TLS test uses a test-only linker wrapper to trust its ephemeral
 certificate for successful TLS and hostname-mismatch cases. This injection adds
 no public CA option and does not change production or system trust settings.

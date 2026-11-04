@@ -31,3 +31,24 @@ full source/toolchain/environment provenance.
 For native validation/setup and bounded-copy CPU costs without a network or
 Python server, use the separate [CPU profile harness](PROFILE.md). It reports
 compiler-specific stack frames and paired CPU/wall samples against a Git baseline.
+
+## Metadata consumer workload
+
+`make metadata-bench` records `.build/metadata-bench.json`: five samples of ten
+fresh CLI processes fetching synthetic GitHub-shaped metadata over real loopback
+TLS, plus five internally timed samples of 2000 validate-and-render operations.
+Each TLS result and parser checksum is checked. Certificate/fixture creation,
+two TLS warmups and 100 validation warmups are excluded. TLS durations include
+process/runtime startup, buffer preparation, server scheduling/work, transport,
+validation, escaping, capture and Python decoding/assertions. Validation durations
+exclude file reading and process startup; they include owned result creation and
+JSON rendering. These workloads measure different boundaries.
+
+The test-linked shim redirects the fixed production URL only in fixture binaries;
+production has no URL override or CA injection. Source hashes, dependency pins,
+flags, fixture hash/size, raw samples and environment are recorded. CPU affinity
+defaults to allowed CPU 2, otherwise the first allowed CPU; override
+`METADATA_CPU`. This is a shared host, with no isolation or timing threshold claim.
+Override `METADATA_REQUESTS`, `METADATA_ITERATIONS` and `METADATA_SAMPLES` for
+longer or smoke runs. The explicit live CLI is not part of normal benchmark/test
+targets. See [the consumer contract](../docs/HONK_METADATA.md).

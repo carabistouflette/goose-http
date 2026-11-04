@@ -3,6 +3,12 @@
 No third-party implementation source is vendored in goose-http. Its own sources
 are licensed under Apache-2.0; see [LICENSE](LICENSE).
 
+The metadata example imports **goose-text** at
+`46059e30be79ece6efd4317eb0adc6d213c808ab`, under Apache-2.0. Its source is fetched
+as a Goose package dependency rather than vendored here. Preserve its
+[license](https://github.com/carabistouflette/goose-text/blob/46059e30be79ece6efd4317eb0adc6d213c808ab/LICENSE)
+and applicable notices when redistributing it.
+
 The private native adapter links to the installed **libcurl** (>=7.85), copyright
 Daniel Stenberg and contributors, under the [curl license](https://curl.se/docs/copyright.html).
 libcurl may depend on a TLS implementation and other libraries supplied by your

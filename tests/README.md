@@ -54,3 +54,17 @@ The fixture and assertions are tested against both upstream 8.5.0 and system
 The older-backend reproduction used curl's `curl-8_5_0` source tag at
 `7161cb17c01dcff1dc5bf89a18437d9d729f1ecd` (its source version label is
 `8.5.0-DEV`), built separately without changing the installed system library.
+
+`make metadata-test` runs pure validator/ownership tests interpreted and compiled,
+then 57 cases through the real compiled reference CLI and loopback HTTPS. These
+exercise the fixed original GitHub URL, GET/headers, anonymous proxy-free requests,
+exact size boundaries, pin/SHA checks, malformed/ambiguous JSON and Unicode,
+content encoding, non-200/redirect, TLS trust/hostname and transfer timeout.
+Missing fixture configuration exits before a request; the fixture asserts one
+request per valid-pin HTTP case and none for invalid pins or failed TLS.
+`metadata-sanitize` with GCC and Clang instruments generated Goose/runtime C,
+the native adapter and test shim. The build wrapper's content fingerprint isolates
+the native compiler cache by mode/compiler/input. CI runs both passes plus a
+benchmark execution smoke test. No GitHub request is part of these targets.
+See [the consumer handoff contract](../docs/HONK_METADATA.md) for build bindings,
+dependency pins and the explicit live command.

@@ -4,6 +4,10 @@ SANITIZER_CC ?= gcc
 FUZZ_CC ?= clang
 FUZZ_RUNS ?= 10000
 HTTP2_PYTHON ?= python3
+METADATA_REQUESTS ?= 10
+METADATA_ITERATIONS ?= 2000
+METADATA_SAMPLES ?= 5
+METADATA_CPU ?=
 RUNTIME_WRAPS = -Wl,--wrap=curl_global_init -Wl,--wrap=curl_version_info -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_getinfo
 DNS_WRAPS = -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_cleanup
 BENCH_ITERATIONS ?= 100
@@ -14,7 +18,7 @@ CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
 FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
 .NOTPARALLEL:
-.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize
+.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize metadata-build metadata-test metadata-sanitize metadata-bench
 setup:
 	./scripts/setup-goose.sh
 format:
@@ -25,6 +29,9 @@ check:
 	"$(GOOSE)" format --check http.goose tests examples bench
 	"$(GOOSE)" check tests/api.goose
 	"$(GOOSE)" check examples/request.goose
+	"$(GOOSE)" check examples/toolchain-metadata.goose
+	"$(GOOSE)" check tests/metadata.goose
+	"$(GOOSE)" check bench/metadata.goose
 	"$(GOOSE)" check bench/bench.goose
 	python3 -m py_compile scripts/*.py tests/*.py bench/*.py
 test:
@@ -83,3 +90,17 @@ http2-sanitize:
 	mkdir -p .build
 	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/http2.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$(HTTP2_PYTHON)" tests/http2.py .build/http2-sanitize
+
+metadata-build:
+	python3 scripts/metadata-test-build.py --goose "$(abspath $(GOOSE))" --cc "$(CC)" --mode release --output .build/metadata-consumer
+metadata-test: metadata-build
+	"$(GOOSE)" run tests/metadata.goose
+	"$(GOOSE)" build tests/metadata.goose --standalone -O2 -o .build/metadata-unit
+	./.build/metadata-unit
+	python3 tests/metadata.py .build/metadata-consumer
+metadata-sanitize:
+	python3 scripts/metadata-test-build.py --goose "$(abspath $(GOOSE))" --cc "$(SANITIZER_CC)" --mode sanitize --output .build/metadata-consumer-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/metadata.py .build/metadata-consumer-sanitize
+metadata-bench: metadata-build
+	"$(GOOSE)" build bench/metadata.goose --standalone --cc "$(CC)" -O2 -o .build/metadata-parse
+	python3 bench/metadata-measure.py --goose "$(abspath $(GOOSE))" --cc "$(CC)" --requests $(METADATA_REQUESTS) --iterations $(METADATA_ITERATIONS) --samples $(METADATA_SAMPLES) $(if $(METADATA_CPU),--cpu $(METADATA_CPU),)
