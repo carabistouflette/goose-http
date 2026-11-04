@@ -150,5 +150,11 @@ fn main() {
     assert(status.error == http::Error.Transport && status.transport_code != 0 && body.len == 0 && headers.len == 0);
     status = http::request(binary_url, options, body, body);
     assert(status.error == http::Error.InvalidInput && body.len == 0);
+    options.header_limit = 0;
+    status = http::request(binary_url, options, body, body);
+    assert(status.error == http::Error.InvalidInput && body.len == 0);
+    options.body_limit = 0;
+    status = http::request(binary_url, options, body, body);
+    assert(status.error == http::Error.InvalidInput && body.len == 0);
     print("HTTP API tests passed");
 }

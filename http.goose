@@ -54,6 +54,7 @@ fn valid_header(header: Header) -> bool {
 fn request(url: const u8[:], options: const Options&, body: u8[>..]&, headers: u8[>..]&) -> Status {
     body.clear(); headers.clear();
     let invalid = Status { error: Error.InvalidInput };
+    if body .== headers { return invalid; }
     if url.len == 0 || url.len > 8192 || options.headers.len > 64 ||
         options.body.len > 1048576 || (options.method == Method.Get && options.body.len > 0) ||
         options.timeout_ms < 1 || options.timeout_ms > 86400000 ||
