@@ -3,6 +3,7 @@ CC ?= gcc
 SANITIZER_CC ?= gcc
 FUZZ_CC ?= clang
 FUZZ_RUNS ?= 10000
+RUNTIME_WRAPS = -Wl,--wrap=curl_global_init -Wl,--wrap=curl_version_info -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_getinfo
 DNS_WRAPS = -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_cleanup
 BENCH_ITERATIONS ?= 100
 PROFILE_BASELINE ?= 9a8bed6
@@ -45,6 +46,8 @@ native:
 	python3 tests/integration.py --with-ca .build/tls
 	$(CC) $(CFLAGS) -O2 -pthread tests/dns.c native/http.c $(CURL_FLAGS) $(DNS_WRAPS) -o .build/dns
 	python3 scripts/run.py .build/dns
+	$(CC) $(CFLAGS) -O2 -pthread tests/runtime.c native/http.c $(CURL_FLAGS) $(RUNTIME_WRAPS) -o .build/runtime
+	python3 tests/runtime.py .build/runtime
 sanitize:
 	mkdir -p .build
 	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/native.c native/http.c $(CURL_FLAGS) -o .build/native-sanitize
@@ -55,6 +58,8 @@ sanitize:
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/integration.py --with-ca .build/tls-sanitize
 	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/dns.c native/http.c $(CURL_FLAGS) $(DNS_WRAPS) -o .build/dns-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 scripts/run.py .build/dns-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/runtime.c native/http.c $(CURL_FLAGS) $(RUNTIME_WRAPS) -o .build/runtime-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/runtime.py .build/runtime-sanitize
 fuzz:
 	mkdir -p .build/fuzz-corpus
 	python3 scripts/fuzz-seeds.py
