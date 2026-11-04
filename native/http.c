@@ -1,5 +1,16 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "internal.h"
+#include "http.h"
+#include <curl/curl.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if LIBCURL_VERSION_NUM < 0x075500
+#error "goose-http requires libcurl >= 7.85.0"
+#endif
+
+enum { GH_OK, GH_INVALID, GH_SETUP, GH_TRANSPORT, GH_TIMEOUT, GH_BODY, GH_HEADERS };
 
 static pthread_once_t initialized = PTHREAD_ONCE_INIT;
 static CURLcode init_code = CURLE_FAILED_INIT;
