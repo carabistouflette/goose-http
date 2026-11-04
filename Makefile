@@ -5,11 +5,14 @@ FUZZ_CC ?= clang
 FUZZ_RUNS ?= 10000
 DNS_WRAPS = -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_cleanup
 BENCH_ITERATIONS ?= 100
+PROFILE_BASELINE ?= 9a8bed6
+PROFILE_ITERATIONS ?= 20000
+PROFILE_SAMPLES ?= 5
 CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
 FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
 .NOTPARALLEL:
-.PHONY: setup format check test native sanitize fuzz bench
+.PHONY: setup format check test native sanitize fuzz bench profile
 setup:
 	./scripts/setup-goose.sh
 format:
@@ -62,3 +65,6 @@ bench:
 	$(CC) $(CFLAGS) -O2 -pthread bench/client.c native/http.c $(CURL_FLAGS) -o .build/bench
 	"$(GOOSE)" build bench/bench.goose --cc "$(CC)" -O2 -o .build/bench-goose
 	python3 bench/measure.py --binary .build/bench --goose-binary .build/bench-goose --goose "$(abspath $(GOOSE))" --iterations $(BENCH_ITERATIONS) --cc $(CC)
+
+profile:
+	python3 bench/profile.py --baseline "$(PROFILE_BASELINE)" --iterations $(PROFILE_ITERATIONS) --samples $(PROFILE_SAMPLES) --cc "$(CC)"

@@ -27,3 +27,7 @@ workloads before adding pooling or changing ownership. CI checks execution only.
 
 A [recorded local sample](RESULTS.md) includes the unaggregated durations and
 full source/toolchain/environment provenance.
+
+For native validation/setup and bounded-copy CPU costs without a network or
+Python server, use the separate [CPU profile harness](PROFILE.md). It reports
+compiler-specific stack frames and paired CPU/wall samples against a Git baseline.
