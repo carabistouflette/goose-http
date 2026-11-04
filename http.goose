@@ -175,7 +175,6 @@ fn read_chunk(handle: StreamHandle&, chunk_out: u8[>..]&, headers_out: u8[>..]&,
     var meta: i64[7] = [0, 0, 0, 0, 0, 0, 0];
     let step_ret = native_stream_step(handle.id as i64, step_timeout_ms, meta[..]);
     handle.status_code = meta[4];
-    handle.total_bytes = meta[5];
     let err = to_error(meta[1]);
     let status = Status { error: err, transport_code: meta[6], status_code: meta[4] };
 
@@ -192,6 +191,7 @@ fn read_chunk(handle: StreamHandle&, chunk_out: u8[>..]&, headers_out: u8[>..]&,
             let copy_err = if copy_code != 0 { to_error(copy_code) } else { Error.Transport };
             return StreamStep.Error, Status { error: copy_err, transport_code: meta[6], status_code: meta[4] };
         }
+        handle.total_bytes += copy_meta[0];
         return StreamStep.Chunk, status;
     }
     if step_ret == 1 {

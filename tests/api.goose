@@ -109,6 +109,7 @@ fn test_streaming(base: const u8[:]) {
     var headers:     u8[>..] = [];
     var accumulated: u8[>..] = [];
 
+    var chunk_count = 0;
     for iter in 100 {
         let step, st = http::read_chunk(handle, chunk, headers, 1000);
         if step == http::StreamStep.Chunk {
@@ -116,8 +117,14 @@ fn test_streaming(base: const u8[:]) {
             assert(handle.status_code == 200);
             assert(headers.len > 0);
             accumulated.append(chunk);
+            chunk_count += 1;
+            assert(handle.total_bytes == accumulated.len);
+            if chunk_count == 1 {
+                assert(handle.total_bytes == chunk.len && handle.total_bytes > 0);
+            }
         } else if step == http::StreamStep.Done {
             assert(st.error == http::Error.None && chunk.len == 0);
+            assert(handle.total_bytes == accumulated.len && chunk_count > 1);
             break;
         } else if step == http::StreamStep.IdleTimeout {
             continue;
@@ -144,11 +151,18 @@ fn test_streaming(base: const u8[:]) {
     var mc_handle = http::StreamHandle {};
     assert(http::open_stream(str(base, "/stream-chunks"), mc_opt, mc_handle).error == http::Error.None);
     var mc_data: u8[>..] = [];
+    var mc_chunk_count = 0;
     for iter in 100 {
         let step, st = http::read_chunk(mc_handle, chunk, headers, 1000);
         if step == http::StreamStep.Chunk {
             mc_data.append(chunk);
+            mc_chunk_count += 1;
+            assert(mc_handle.total_bytes == mc_data.len);
+            if mc_chunk_count == 1 {
+                assert(mc_handle.total_bytes == chunk.len && mc_handle.total_bytes > 0);
+            }
         } else if step == http::StreamStep.Done {
+            assert(mc_handle.total_bytes == mc_data.len && mc_chunk_count > 0);
             break;
         } else if step == http::StreamStep.IdleTimeout {
             continue;
