@@ -7,6 +7,8 @@
   GCC/Clang sanitizer coverage. No runtime or example behavior change.
 - Add a separate Debian 12/libcurl 7.88 native HTTP/1 and HTTP/2 compatibility job,
   alongside Ubuntu's libcurl 8.5 full suite. Distro security updates remain enabled.
+- Synchronize the strict HTTP/2 reset fixture with a PING acknowledgement; retain
+  an immediate-reset metadata capability probe for older libcurl backends.
 
 ## 0.1.0 — 2026-11-04 (experimental prerelease)
 

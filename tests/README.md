@@ -137,3 +137,15 @@ The HTTP/2 output records the runtime version and negotiated protocol. Inspect i
 to confirm that the selected backend was actually loaded; header version alone
 is insufficient. These commands use loopback only. Old unpatched upstream builds
 are test reproductions, not recommended deployment dependencies.
+
+The strict HTTP/2 reset case sends headers, partial DATA and a PING, then waits
+for its matching acknowledgement before resetting the stream. This separates
+the reset from the initial input without sleeps; the client must report the
+received HTTP 200 and negotiated HTTP/2 along with transport failure and empty
+outputs. A separate immediate-reset probe sends HEADERS/DATA/RST together and
+records available metadata. Older backends can discard that buffered input
+before exposing status/version, so this probe permits unknown values while still
+requiring failure/empty outputs. The server independently verifies ALPN h2,
+both requests, both real resets and the acknowledgement. libcurl documents
+unknown values for [response code](https://curl.se/libcurl/c/CURLINFO_RESPONSE_CODE.html)
+and [HTTP version](https://curl.se/libcurl/c/CURLINFO_HTTP_VERSION.html).

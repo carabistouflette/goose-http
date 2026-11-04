@@ -102,6 +102,14 @@ int main(int argc, char **argv) {
     CHECK(strstr((char *)headers, "proxy-authenticate: Basic realm=\"fixture\"\r\n"));
     CHECK(request("/reset", 0, none, none, 5000, body, sizeof body, headers, 4096, meta) == TRANSPORT);
     CHECK(meta[0] != CURLE_OK && meta[1] == 200 && last_protocol == CURL_HTTP_VERSION_2_0); empty(meta);
+    CHECK(request("/reset-immediate", 0, none, none, 5000, body, sizeof body, headers, 4096, meta) == TRANSPORT);
+    printf("HTTP/2 immediate reset metadata: curl=%lld status=%lld protocol=%ld\n",
+        (long long)meta[0], (long long)meta[1], last_protocol);
+    /* Older backends may fail before coalesced HEADERS/DATA/RST expose metadata.
+       The ACK-separated reset above still strictly requires status/protocol.
+       The server independently requires ALPN h2 and both real reset paths. */
+    CHECK(meta[0] != CURLE_OK && (meta[1] == 0 || meta[1] == 200));
+    CHECK(last_protocol == 0 || last_protocol == CURL_HTTP_VERSION_2_0); empty(meta);
     CHECK(request("/timeout", 0, none, none, 100, body, sizeof body, headers, 4096, meta) == TIMEOUT); empty(meta);
     uint8_t *upload = malloc(1048576), *download = malloc(1048576);
     CHECK(upload && download);

@@ -27,7 +27,7 @@ class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         connection = h2.connection.H2Connection(config=h2.config.H2Configuration(
             client_side=False, header_encoding='utf-8'))
-        requests, pending = {}, {}
+        requests, pending, reset_wait = {}, {}, {}
         try:
             if self.request.selected_alpn_protocol() != 'h2':
                 raise AssertionError('client did not negotiate h2 through ALPN')
@@ -46,6 +46,12 @@ class Handler(socketserver.BaseRequestHandler):
                     elif isinstance(event, h2.events.StreamReset):
                         pending.pop(event.stream_id, None)
                         requests.pop(event.stream_id, None)
+                    elif isinstance(event, h2.events.PingAckReceived):
+                        stream = reset_wait.pop(event.ping_data)
+                        connection.reset_stream(stream, error_code=2)
+                        with self.server.lock:
+                            self.server.resets += 1
+                            self.server.reset_acks += 1
                     elif isinstance(event, h2.events.StreamEnded):
                         headers, upload = requests.pop(event.stream_id)
                         path = headers[':path']
@@ -81,12 +87,19 @@ class Handler(socketserver.BaseRequestHandler):
                             body, extra = gzip.compress(BINARY, mtime=0), [('content-encoding', 'gzip')]
                         elif path == '/timeout':
                             time.sleep(0.3)
-                        elif path == '/reset':
+                        elif path in ('/reset', '/reset-immediate'):
                             connection.send_headers(event.stream_id, [(':status', '200'), ('content-length', '10')])
                             connection.send_data(event.stream_id, b'abc')
-                            connection.reset_stream(event.stream_id, error_code=2)
-                            with self.server.lock:
-                                self.server.resets += 1
+                            if path == '/reset':
+                                # ACK separates the headers/data from the reset
+                                # without a scheduling-dependent sleep.
+                                token = b'rstguard'
+                                reset_wait[token] = event.stream_id
+                                connection.ping(token)
+                            else:
+                                connection.reset_stream(event.stream_id, error_code=2)
+                                with self.server.lock:
+                                    self.server.resets += 1
                             continue
                         elif path != '/binary':
                             raise AssertionError('unknown fixture path: ' + path)
@@ -130,6 +143,7 @@ class TLSServer(Server):
         self.paths = collections.Counter()
         self.errors = []
         self.resets = 0
+        self.reset_acks = 0
         self.redirect_origin = ''
         super().__init__(('127.0.0.1', 0), Handler)
 
@@ -171,7 +185,7 @@ def fixtures():
             raise AssertionError('redirect target received a request')
         if source.paths['/redirect'] != 1 or source.paths['/unauthorized'] != 1 or source.paths['/proxy-auth'] != 1:
             raise AssertionError('redirect/auth request was skipped or retried: ' + repr(source.paths))
-        if source.paths['/reset'] != 1 or source.resets != 1:
+        if source.paths['/reset'] != 1 or source.paths['/reset-immediate'] != 1 or source.resets != 2 or source.reset_acks != 1:
             raise AssertionError('reset did not reach HTTP/2 response headers and RST_STREAM')
         if source.paths['/timeout'] != 1:
             raise AssertionError('timeout did not reach the HTTP/2 response phase')
