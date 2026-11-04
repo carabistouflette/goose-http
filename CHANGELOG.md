@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add deterministic differential metadata validation campaigns with a Python JSON
+  oracle, owned-result checks, fixed resource/Unicode/duplicate boundaries and
+  GCC/Clang sanitizer coverage. No runtime or example behavior change.
+- Add a separate Debian 12/libcurl 7.88 native HTTP/1 and HTTP/2 compatibility job,
+  alongside Ubuntu's libcurl 8.5 full suite. Distro security updates remain enabled.
+
 ## 0.1.0 — 2026-11-04 (experimental prerelease)
 
 Initial public release of the bounded synchronous Goose HTTP client, Apache-2.0.

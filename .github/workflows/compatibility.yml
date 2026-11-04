@@ -1,0 +1,26 @@
+name: libcurl compatibility
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  debian12-native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # Official Debian bookworm-slim multi-platform index, resolved 2026-11-04.
+    # Keep security updates from Debian's maintained package repositories.
+    container: debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3
+    steps:
+      - name: Install native test dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential git python3 python3-h2 pkg-config libcurl4-openssl-dev openssl ca-certificates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Record and require Debian 12 libcurl backend
+        run: |
+          dpkg-query -W libcurl4-openssl-dev libcurl4 openssl python3-h2
+          pkg-config --modversion libcurl
+          case "$(pkg-config --modversion libcurl)" in
+            7.88.*) ;;
+            *) echo "unexpected Debian 12 libcurl version" >&2; exit 1 ;;
+          esac
+      - run: make native http2

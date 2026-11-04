@@ -1,5 +1,42 @@
 # Test boundaries
 
+## Metadata differential campaign
+
+`make metadata-fuzz` compares the compiled example validator with an independent
+Python JSON oracle. The default seed is 491: 10000 generated/mutated/raw byte cases
+plus 77 fixed cases for Unicode, decoded duplicate keys, required types, malformed
+numbers, nesting and exact/exceeded resource limits. Successful results are checked
+field by field; rejected inputs must return empty fields. The driver clears its
+parser input before rendering the owned result. No fetch or network request occurs.
+
+`make metadata-fuzz-sanitize SANITIZER_CC=gcc` and the Clang equivalent instrument
+the generated Goose/runtime C and native package using the existing content-keyed
+test compiler wrapper. The transport shim is linked but never called by this driver;
+the HTTPS fixture tests remain separate. CI runs all three modes. Override
+`METADATA_FUZZ_CASES` (1..100000) and `METADATA_FUZZ_SEED` to extend a campaign.
+
+The Python generator streams trusted test records into batches of at most 1000
+cases and 32 MiB; every record has a little-endian u32 body length. The standalone
+driver reads each whole file before checking the 32 MiB cap, so this framing is
+not an untrusted-file API. It rejects truncated/oversized records. Each process
+has a 120-second outer limit. This is deterministic mutation/property testing,
+not coverage-guided fuzzing or a proof of correctness. Headers and transport use
+fixed successful inputs here; the separate HTTPS matrix exercises those policies.
+
+The oracle uses Python's JSON grammar, preserving decoded duplicate object keys;
+it applies the application's UTF-8/depth/number/body limits and critical-member
+policy independently. Unknown numeric values are ignored after lexeme checks,
+so this does not verify floating-point conversion. Reports retain seed, counts,
+corpus hash, binary hash, caller-supplied mode label and source hashes/dirty state
+in separate `.build/metadata-fuzz-*-results.json` files for each Make target.
+Old reports for that target are removed before a campaign starts. CI retains
+these reports and corpus/reproducer files, including failed-run artifacts.
+On a disagreement the harness saves a single framed reproducer at
+`.build/metadata-fuzz-failure.bin`; run the compiled driver with that filename.
+Crashes/timeouts preserve the batch as `.build/metadata-fuzz-crash.bin`.
+Python optimization is rejected because oracle assertions must stay active.
+Run campaigns serially per checkout: corpus and failure paths are shared.
+
 `make test` exercises Goose run/release/debug builds, owned outputs and compiler
 lifetime rejection, plus native loopback HTTP/1/TLS, callback/option/allocation
 faults and DNS cleanup. The runtime fault driver uses a fresh process per mode:
@@ -68,3 +105,35 @@ the native compiler cache by mode/compiler/input. CI runs both passes plus a
 benchmark execution smoke test. No GitHub request is part of these targets.
 See [the consumer handoff contract](../docs/HONK_METADATA.md) for build bindings,
 dependency pins and the explicit live command.
+
+## libcurl compatibility coverage
+
+The full Ubuntu 24.04 workflow exercises its maintained distribution libcurl
+8.5 backend, including the Goose API and compiled metadata consumer. A separate
+lightweight [compatibility workflow](../.github/workflows/compatibility.yml)
+uses official Debian 12 with its maintained libcurl 7.88 backend for the native
+HTTP/1, TLS, runtime/fault and real HTTP/2 suites. That job checks the expected
+upstream version family and records exact installed package revisions; it does
+not build Goose or claim that the compiler is validated on Debian 12.
+
+The Debian base image is pinned by digest. Apt packages deliberately receive
+the distribution's current security updates, so the package versions are logged
+rather than frozen to obsolete builds. The official image is described at
+[Docker Hub](https://hub.docker.com/_/debian/), and the Debian package source is
+[libcurl4-openssl-dev in bookworm](https://packages.debian.org/bookworm/libcurl4-openssl-dev).
+This matrix does not cover every supported TLS/resolver configuration or establish
+support for untested platforms. The API's libcurl feature checks remain required.
+
+Local native/HTTP2 reruns also passed with system libcurl 8.23.0 and the separately
+built upstream 8.5 source revision recorded above, using the same current tests.
+To select an independently prepared libcurl without modifying system packages,
+pass explicit compiler/linker flags (including a runtime search path) to Make:
+
+```sh
+make native http2 CURL_FLAGS="-I/absolute/curl/include -L/absolute/curl/lib -Wl,-rpath,/absolute/curl/lib -lcurl"
+```
+
+The HTTP/2 output records the runtime version and negotiated protocol. Inspect it
+to confirm that the selected backend was actually loaded; header version alone
+is insufficient. These commands use loopback only. Old unpatched upstream builds
+are test reproductions, not recommended deployment dependencies.

@@ -15,6 +15,9 @@ jobs:
       - run: make sanitize http2-sanitize metadata-sanitize SANITIZER_CC=gcc
       - run: make sanitize http2-sanitize metadata-sanitize SANITIZER_CC=clang
       - run: make fuzz FUZZ_RUNS=10000
+      - run: make metadata-fuzz
+      - run: make metadata-fuzz-sanitize SANITIZER_CC=gcc
+      - run: make metadata-fuzz-sanitize SANITIZER_CC=clang METADATA_FUZZ_SEED=492
       - run: make bench BENCH_ITERATIONS=10
       - run: make profile PROFILE_BASELINE=HEAD PROFILE_ITERATIONS=100 PROFILE_SAMPLES=1
       - run: make metadata-bench METADATA_REQUESTS=2 METADATA_ITERATIONS=100 METADATA_SAMPLES=1
@@ -26,4 +29,8 @@ jobs:
             .build/bench.json
             .build/profile-results.json
             .build/metadata-bench.json
+            .build/metadata-fuzz-*results.json
+            .build/metadata-fuzz-corpus.bin
+            .build/metadata-fuzz-failure.bin
+            .build/metadata-fuzz-crash.bin
           if-no-files-found: ignore

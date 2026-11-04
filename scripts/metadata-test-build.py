@@ -17,6 +17,8 @@ def main():
     parser.add_argument("--cc", default="gcc")
     parser.add_argument("--output", help="executable path (default: compiler/mode build directory)")
     parser.add_argument("--mode", choices=("release", "sanitize"), default="release")
+    parser.add_argument("--source", choices=("examples/toolchain-metadata.goose", "tests/metadata_fuzz.goose"),
+                        default="examples/toolchain-metadata.goose")
     arguments = parser.parse_args()
     compiler = shutil.which(arguments.cc)
     if compiler is None:
@@ -52,7 +54,7 @@ def main():
     wrapper.chmod(0o755)
     binary = (ROOT / arguments.output).resolve() if arguments.output else folder / "toolchain-metadata"
     binary.parent.mkdir(parents=True, exist_ok=True)
-    command = [str(Path(arguments.goose).resolve()), "build", "examples/toolchain-metadata.goose",
+    command = [str(Path(arguments.goose).resolve()), "build", arguments.source,
                "--cc", str(wrapper), "--standalone", "-o", str(binary)]
     print(shlex.join(command), flush=True)
     subprocess.run(command, cwd=ROOT, check=True, timeout=240)
