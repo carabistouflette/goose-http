@@ -82,6 +82,17 @@ class Handler(socketserver.StreamRequestHandler):
                         b"3\r\nabc\r\n0\r\nX-End: done\r\n\r\n")
             elif path == b"/gzip":
                 data = response(GZIP, extra=b"Content-Encoding: gzip\r\n")
+            elif path == b"/stream-chunks":
+                parts = [b"chunk-1:", b"chunk-2:", b"chunk-3:done"]
+                data = (b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+                        + b"".join(f"{len(p):x}\r\n".encode() + p + b"\r\n" for p in parts)
+                        + b"0\r\n\r\n")
+            elif path == b"/stream-slow":
+                self.wfile.write(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n")
+                self.wfile.flush()
+                time.sleep(0.08)
+                self.wfile.write(b"5\r\nhello\r\n0\r\n\r\n")
+                return
             elif path.startswith(b"/bytes/"):
                 count = int(path[len(b"/bytes/"):])
                 if not 0 <= count <= 16777217:

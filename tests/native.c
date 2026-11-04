@@ -129,6 +129,88 @@ int main(int argc, char **argv) {
                      (gh_output){NULL, 1}, (gh_output){head, sizeof head}, (gh_metadata){meta, 4}) == INVALID);
     CHECK(gh_request(input(argv[1], strlen(argv[1])), 0, none, none, 200, 1,
                      (gh_output){out, -1}, (gh_output){head, sizeof head}, (gh_metadata){meta, 4}) == INVALID);
+    /* Streaming API native integration tests */
+    {
+        char stream_url[9000];
+        CHECK(snprintf(stream_url, sizeof stream_url, "%s/stream-chunks", base) < (int)sizeof stream_url);
+        int64_t smeta[7];
+
+        /* Bad URL / input validation */
+        CHECK(gh_stream_open(input("not-a-url", 9), none, 1000, 1000, 4096, 1048576, 65536, 1,
+                             (gh_metadata){smeta, 3}) == INVALID);
+        CHECK(gh_stream_open(input(stream_url, strlen(stream_url)), none, 1000, 1000, 0, 1048576, 65536, 1,
+                             (gh_metadata){smeta, 3}) == INVALID);
+        CHECK(gh_stream_open(input(stream_url, strlen(stream_url)), none, 1000, 1000, 4096, 1048576, 65536, 0,
+                             (gh_metadata){smeta, 3}) == INVALID); /* HTTP disallowed */
+
+        /* Open valid stream */
+        CHECK(gh_stream_open(input(stream_url, strlen(stream_url)), none, 10000, 5000, 4, 1048576, 65536, 1,
+                             (gh_metadata){smeta, 3}) == OK);
+        int64_t hid = smeta[0];
+        CHECK(hid > 0);
+
+        unsigned char stream_chunk[4];
+        unsigned char stream_headers[4096];
+        unsigned char accumulated[1024];
+        size_t total_acc = 0;
+
+        for (int iter = 0; iter < 100; ++iter) {
+            int64_t step_meta[7];
+            int64_t step = gh_stream_step(hid, 1000, (gh_metadata){step_meta, 7});
+            if (step == 0) { /* Chunk */
+                int64_t r_meta[2];
+                int64_t r_res = gh_stream_read_data(hid, (gh_output){stream_chunk, sizeof stream_chunk},
+                                                    (gh_output){stream_headers, sizeof stream_headers},
+                                                    (gh_metadata){r_meta, 2});
+                CHECK(r_res == OK);
+                size_t n = (size_t)r_meta[0];
+                CHECK(n > 0 && n <= sizeof stream_chunk);
+                CHECK(total_acc + n < sizeof accumulated);
+                memcpy(accumulated + total_acc, stream_chunk, n);
+                total_acc += n;
+            } else if (step == 2) { /* Done */
+                break;
+            } else if (step == 1) { /* Idle timeout */
+                continue;
+            } else {
+                CHECK(0 && "unexpected step");
+            }
+        }
+        accumulated[total_acc] = 0;
+        CHECK(!strcmp((char *)accumulated, "chunk-1:chunk-2:chunk-3:done"));
+
+        /* Close stream */
+        int64_t cmeta[2];
+        CHECK(gh_stream_close(hid, (gh_metadata){cmeta, 2}) == OK);
+        /* Stale handle rejected */
+        CHECK(gh_stream_close(hid, (gh_metadata){cmeta, 2}) == INVALID);
+        CHECK(gh_stream_step(hid, 100, (gh_metadata){smeta, 7}) == 3 && smeta[1] == INVALID);
+        /* Zero handle idempotent OK */
+        CHECK(gh_stream_close(0, (gh_metadata){cmeta, 2}) == OK);
+
+        /* Body limit test */
+        CHECK(gh_stream_open(input(stream_url, strlen(stream_url)), none, 10000, 5000, 64, 10, 65536, 1,
+                             (gh_metadata){smeta, 3}) == OK);
+        int64_t lim_hid = smeta[0];
+        CHECK(lim_hid > 0);
+        int got_body_limit = 0;
+        for (int iter = 0; iter < 100; ++iter) {
+            int64_t step_meta[7];
+            int64_t step = gh_stream_step(lim_hid, 1000, (gh_metadata){step_meta, 7});
+            if (step == 0) {
+                int64_t r_meta[2];
+                gh_stream_read_data(lim_hid, (gh_output){stream_chunk, sizeof stream_chunk},
+                                    (gh_output){stream_headers, sizeof stream_headers},
+                                    (gh_metadata){r_meta, 2});
+            } else if (step == 3) {
+                CHECK(step_meta[1] == BODY);
+                got_body_limit = 1;
+                break;
+            }
+        }
+        CHECK(got_body_limit);
+        CHECK(gh_stream_close(lim_hid, (gh_metadata){cmeta, 2}) == OK);
+    }
     puts("native HTTP integration passed");
     return 0;
 }

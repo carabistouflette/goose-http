@@ -20,6 +20,7 @@ PROFILE_SAMPLES ?= 5
 CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
 FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
+NATIVE_SOURCES = native/http.c native/stream.c
 .NOTPARALLEL:
 .PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize metadata-build metadata-test metadata-sanitize metadata-bench metadata-fuzz metadata-fuzz-sanitize metadata-coverage-fuzz
 setup:
@@ -51,36 +52,40 @@ test:
 	$(MAKE) native
 native:
 	mkdir -p .build
-	$(CC) $(CFLAGS) -O2 -pthread tests/native.c native/http.c $(CURL_FLAGS) -o .build/native
+	$(CC) $(CFLAGS) -O2 -pthread tests/native.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/native
 	python3 tests/integration.py .build/native
-	$(CC) $(CFLAGS) -O2 -pthread tests/failures.c native/http.c $(CURL_FLAGS) $(FAIL_WRAPS) -o .build/failures
+	$(CC) $(CFLAGS) -O2 -pthread tests/failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(FAIL_WRAPS) -o .build/failures
 	./.build/failures
-	$(CC) $(CFLAGS) -O2 -pthread tests/tls.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/tls
+	$(CC) $(CFLAGS) -O2 -pthread tests/tls.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/tls
 	python3 tests/integration.py --with-ca .build/tls
-	$(CC) $(CFLAGS) -O2 -pthread tests/dns.c native/http.c $(CURL_FLAGS) $(DNS_WRAPS) -o .build/dns
+	$(CC) $(CFLAGS) -O2 -pthread tests/dns.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(DNS_WRAPS) -o .build/dns
 	python3 scripts/run.py .build/dns
-	$(CC) $(CFLAGS) -O2 -pthread tests/runtime.c native/http.c $(CURL_FLAGS) $(RUNTIME_WRAPS) -o .build/runtime
+	$(CC) $(CFLAGS) -O2 -pthread tests/runtime.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(RUNTIME_WRAPS) -o .build/runtime
 	python3 tests/runtime.py .build/runtime
+	$(CC) $(CFLAGS) -O2 -pthread -DGH_MAX_GENERATION=3 tests/stream_retire.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/stream_retire
+	./.build/stream_retire
 sanitize:
 	mkdir -p .build
-	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/native.c native/http.c $(CURL_FLAGS) -o .build/native-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/native.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/native-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/integration.py .build/native-sanitize
-	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/failures.c native/http.c $(CURL_FLAGS) $(FAIL_WRAPS) -o .build/failures-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(FAIL_WRAPS) -o .build/failures-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/failures-sanitize
-	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/tls.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/tls-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/tls.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/tls-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/integration.py --with-ca .build/tls-sanitize
-	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/dns.c native/http.c $(CURL_FLAGS) $(DNS_WRAPS) -o .build/dns-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/dns.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(DNS_WRAPS) -o .build/dns-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 scripts/run.py .build/dns-sanitize
-	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/runtime.c native/http.c $(CURL_FLAGS) $(RUNTIME_WRAPS) -o .build/runtime-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/runtime.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(RUNTIME_WRAPS) -o .build/runtime-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/runtime.py .build/runtime-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread -DGH_MAX_GENERATION=3 tests/stream_retire.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/stream_retire-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/stream_retire-sanitize
 fuzz:
 	mkdir -p .build/fuzz-corpus
 	python3 scripts/fuzz-seeds.py
-	$(FUZZ_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined -pthread tests/fuzz.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -o .build/fuzz
+	$(FUZZ_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined -pthread tests/fuzz.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -o .build/fuzz
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 .build/fuzz -runs=$(FUZZ_RUNS) -seed=491 -max_len=65536 -timeout=5 -artifact_prefix=.build/ .build/fuzz-corpus
 bench:
 	mkdir -p .build
-	$(CC) $(CFLAGS) -O2 -pthread bench/client.c native/http.c $(CURL_FLAGS) -o .build/bench
+	$(CC) $(CFLAGS) -O2 -pthread bench/client.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/bench
 	"$(GOOSE)" build bench/bench.goose --cc "$(CC)" -O2 -o .build/bench-goose
 	python3 bench/measure.py --binary .build/bench --goose-binary .build/bench-goose --goose "$(abspath $(GOOSE))" --iterations $(BENCH_ITERATIONS) --cc $(CC)
 
@@ -89,11 +94,11 @@ profile:
 
 http2:
 	mkdir -p .build
-	$(CC) $(CFLAGS) -O2 -pthread tests/http2.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2
+	$(CC) $(CFLAGS) -O2 -pthread tests/http2.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2
 	"$(HTTP2_PYTHON)" tests/http2.py .build/http2
 http2-sanitize:
 	mkdir -p .build
-	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/http2.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/http2.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/http2-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$(HTTP2_PYTHON)" tests/http2.py .build/http2-sanitize
 
 metadata-build:
