@@ -56,8 +56,49 @@ are permitted. Caller may intentionally re-request a redirect under its policy.
 Native adapter uses libcurl, a once-only process-lifetime global initialization,
 per-call easy handle and direct copies into prebounded Goose-owned buffers.
 No native pointers escape. Buffers do not grow during native calls. No retries,
-async API, pooling, streaming sinks, file writes or registry policy in v1. Bounded
-buffering is the first milestone; streaming should get a separate reviewed API.
+async API, pooling, or connection reuse across calls. In addition to buffered `request`,
+a pull-based streaming transfer API (`open_stream`, `read_chunk`, `close_stream`) provides
+bounded chunk delivery directly to caller-owned buffers.
+
+## Streaming API Contract
+
+### Overview & Functions
+The streaming client enables incremental, pull-based consumption of HTTP/HTTPS response bodies:
+- `open_stream(url: const u8[:], options: const StreamOptions&, handle: StreamHandle&) -> Status`:
+  Setup-only; executes zero network I/O or blocking waits. Validates inputs, claims an active slot
+  in the 32-slot generational registry, configures libcurl easy and multi handles, and populates `handle.id`.
+- `read_chunk(handle: StreamHandle&, chunk_out: u8[>..]&, headers_out: u8[>..]&, step_timeout_ms: i32) -> StreamStep, Status`:
+  Drives libcurl multi transfers, header collection, and chunk draining. Returns `StreamStep.Chunk`
+  (positive chunk length <= `chunk_limit`), `StreamStep.IdleTimeout` (step timeout elapsed with no data),
+  `StreamStep.Done` (normal EOF completion), `StreamStep.Error` (terminal failure), or `StreamStep.Cancelled`.
+  Output buffers are completely cleared and empty on any non-Chunk step.
+- `close_stream(handle: StreamHandle&) -> Status`:
+  Aborts transfer if active, removes and cleans up libcurl easy/multi handles, releases internal ring and header
+  buffers, and resets `handle.id = 0`. Idempotent for zero handle IDs. Returns cleanup status; failures report
+  the underlying `CURLMcode` (libcurl multi error code) in `transport_code`.
+
+### Registry & Generational Retirement
+- Maximum 32 concurrent active streams (`GH_MAX_STREAMS`).
+- Registry tracks slots through 4 states: `GH_SLOT_FREE`, `GH_SLOT_RESERVED`, `GH_SLOT_ACTIVE`, `GH_SLOT_CLOSING`.
+- Generational IDs combine a 48-bit monotonically bumped generation and 16-bit slot index (`(gen << 16) | (slot + 1)`).
+- When a slot's generation reaches `GH_MAX_GENERATION` (`0x7FFFFFFFFFFFLL`), it is permanently retired as a sentinel.
+  Generations never wrap or reuse past IDs; all stale or invalid IDs are rejected with `Error.InvalidInput`.
+
+### Flow Control, Ring Buffer & Protocol Enforcement
+- Native backpressure is maintained using an internal ring buffer with capacity `max(2 * chunk_limit, 128 KiB)`.
+  When the ring buffer is full, libcurl transfer is synchronously paused (`CURL_WRITEFUNC_PAUSE`). Once at least
+  16 KiB is consumed via `read_chunk`, the transfer is resumed (`curl_easy_pause(CURLPAUSE_CONT)`).
+- Forced HTTP/1.1 (`CURL_HTTP_VERSION_1_1`) and `Accept-Encoding: identity` with content decoding disabled:
+  avoids HTTP/2 and HTTP/3 multiplexing pause-window bloat (up to 10 MiB+) and prevents transparent chunk decompression caching.
+- `handle.total_bytes` accurately maintains cumulative delivered body bytes after each successful chunk copy.
+- Control flow is strictly pull-based: libcurl callbacks execute synchronously within native C; no Goose interpreter
+  callbacks or closures cross the FFI boundary.
+
+### Timeouts & Wall-Clock Deadlines
+- `options.timeout_ms` bounds total transfer time budget across the stream.
+- `step_timeout_ms` bounds maximum wait time for a single `read_chunk` step before returning `StreamStep.IdleTimeout`.
+- Neither represents a universal hard wall-clock cancellation bound: threaded resolver cleanup (`getaddrinfo`)
+  and libcurl socket cleanup may block beyond the deadline on slow systems. Real-time deadlines require external process supervision.
 No TLS or HTTP parser is implemented here. Transport codes are libcurl CURLcode;
 errors distinguish InvalidInput, SetupFailed, Transport, TimedOut, BodyLimit,
 HeaderLimit. `timeout_ms` sets libcurl's transfer timeout, including resolution,
