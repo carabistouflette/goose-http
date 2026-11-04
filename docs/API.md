@@ -27,9 +27,11 @@ Application headers cannot override Host, Content-Length, Transfer-Encoding,
 Connection, Proxy-Connection, TE, Trailer, Upgrade, Expect or Accept-Encoding.
 Empty/whitespace-only request header values send an empty field (libcurl's
 semicolon syntax internally), rather than suppressing that header.
-No automatic decompression. Transfer-decoded body bytes (chunk framing removed) and raw response header blocks
-(including informational responses and trailers) are returned. Headers are not
-normalized, decoded or silently merged. Output buffers are empty on ANY error;
+No automatic decompression. Transfer-decoded body bytes (chunk framing removed)
+and bytes delivered by libcurl's header callback (including informational
+responses and trailers) are returned. The library adds no header normalization
+or merging. These are not guaranteed to be raw wire bytes: libcurl may unfold
+HTTP/1 headers or render HTTP/2 headers as text. Output buffers are empty on ANY error;
 partial network responses must not be consumed as complete data.
 
 TLS certificate/hostname verification stays enabled. No insecure switch. Default

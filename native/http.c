@@ -108,6 +108,7 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     if (uc == CURLUE_OK) uc = curl_url_get(parsed, CURLUPART_HOST, &host, 0);
     bool valid = uc == CURLUE_OK && host && *host;
     curl_free(host); curl_url_cleanup(parsed);
+    if (uc == CURLUE_OUT_OF_MEMORY) return GH_SETUP;
     if (!valid) return GH_INVALID;
 
     CURL *curl = curl_easy_init();

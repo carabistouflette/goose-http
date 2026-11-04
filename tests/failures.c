@@ -12,7 +12,7 @@ enum { OK, INVALID, SETUP, TRANSPORT, TIMEOUT, BODY, HEADERS };
 enum { VERIFY_PEER = 1, VERIFY_HOST = 2, NO_PROXY = 4, NO_REDIRECT = 8,
        NO_SIGNAL = 16, PROTOCOLS = 32, REDIRECT_PROTOCOLS = 64, TIMEOUT_SET = 128 };
 static int fail_easy, fail_url, fail_append, append_count, fail_option, option_count;
-static int performed, security_options, allow_http;
+static int performed, security_options, allow_http, fail_url_set, fail_url_get;
 static CURLcode transfer_result;
 static curl_write_callback body_callback, header_callback;
 static void *body_data, *header_data;
@@ -21,10 +21,18 @@ static unsigned char payload[256];
 
 CURL *__real_curl_easy_init(void);
 CURLU *__real_curl_url(void);
+CURLUcode __real_curl_url_set(CURLU *, CURLUPart, const char *, unsigned int);
+CURLUcode __real_curl_url_get(const CURLU *, CURLUPart, char **, unsigned int);
 struct curl_slist *__real_curl_slist_append(struct curl_slist *, const char *);
 CURLcode __real_curl_easy_setopt(CURL *, CURLoption, ...);
 CURL *__wrap_curl_easy_init(void) { return fail_easy ? NULL : __real_curl_easy_init(); }
 CURLU *__wrap_curl_url(void) { return fail_url ? NULL : __real_curl_url(); }
+CURLUcode __wrap_curl_url_set(CURLU *handle, CURLUPart part, const char *value, unsigned int flags) {
+    return fail_url_set ? CURLUE_OUT_OF_MEMORY : __real_curl_url_set(handle, part, value, flags);
+}
+CURLUcode __wrap_curl_url_get(const CURLU *handle, CURLUPart part, char **value, unsigned int flags) {
+    return fail_url_get ? CURLUE_OUT_OF_MEMORY : __real_curl_url_get(handle, part, value, flags);
+}
 struct curl_slist *__wrap_curl_slist_append(struct curl_slist *list, const char *line) {
     ++append_count;
     return append_count == fail_append ? NULL : __real_curl_slist_append(list, line);
@@ -85,7 +93,7 @@ CURLcode __wrap_curl_easy_perform(CURL *handle) {
 static gh_input input(const void *p, int64_t n) { return (gh_input){p, n}; }
 static void reset(void) {
     fail_easy = fail_url = fail_append = append_count = fail_option = option_count = 0;
-    performed = security_options = allow_http = 0;
+    performed = security_options = allow_http = fail_url_set = fail_url_get = 0;
     body_callback = header_callback = NULL; body_data = header_data = NULL;
     transfer_result = CURLE_COULDNT_CONNECT; send_body = send_header = 0;
 }
@@ -120,6 +128,10 @@ int main(void) {
     }
     reset(); fail_easy = 1; CHECK(request(body, 64, head, 64, meta) == SETUP); empty_lengths(meta);
     reset(); fail_url = 1; CHECK(request(body, 64, head, 64, meta) == SETUP); empty_lengths(meta);
+    reset(); fail_url_set = 1; CHECK(request(body, 64, head, 64, meta) == SETUP);
+    CHECK(!performed); empty_lengths(meta);
+    reset(); fail_url_get = 1; CHECK(request(body, 64, head, 64, meta) == SETUP);
+    CHECK(!performed); empty_lengths(meta);
     reset(); transfer_result = CURLE_OPERATION_TIMEDOUT; send_body = 3; send_header = 5;
     CHECK(request(body, 64, head, 64, meta) == TIMEOUT);
     CHECK(meta[0] == CURLE_OPERATION_TIMEDOUT); empty_lengths(meta);

@@ -89,13 +89,13 @@ class Server(socketserver.ThreadingTCPServer):
 
 
 @contextlib.contextmanager
-def fixtures():
+def fixtures(include_ca=False):
     """Yield HTTP and self-signed HTTPS origins, shutting down servers on failure."""
     with tempfile.TemporaryDirectory(prefix="goose-http-test-") as folder:
         root = Path(folder)
         subprocess.run([
             "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-            "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1",
+            "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost",
             "-keyout", str(root / "key.pem"), "-out", str(root / "cert.pem"),
         ], check=True, timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         with Server(("127.0.0.1", 0), Handler) as http, Server(("127.0.0.1", 0), Handler) as tls:
@@ -107,7 +107,9 @@ def fixtures():
             for thread in threads:
                 thread.start()
             try:
-                yield f"http://127.0.0.1:{http.server_address[1]}", f"https://127.0.0.1:{tls.server_address[1]}"
+                origins = (f"http://127.0.0.1:{http.server_address[1]}",
+                           f"https://127.0.0.1:{tls.server_address[1]}")
+                yield (*origins, str(root / "cert.pem")) if include_ca else origins
             finally:
                 http.shutdown()
                 tls.shutdown()
@@ -125,10 +127,14 @@ def hostile_environment():
 
 
 def main():
-    if len(sys.argv) < 2:
-        raise SystemExit("usage: integration.py COMMAND [ARG ...]")
-    with fixtures() as (http, tls):
-        subprocess.run([*sys.argv[1:], http, tls],
+    command = sys.argv[1:]
+    include_ca = bool(command and command[0] == "--with-ca")
+    if include_ca:
+        command = command[1:]
+    if not command:
+        raise SystemExit("usage: integration.py [--with-ca] COMMAND [ARG ...]")
+    with fixtures(include_ca=include_ca) as arguments:
+        subprocess.run([*command, *arguments],
                        check=True, timeout=60, env=hostile_environment())
 
 
