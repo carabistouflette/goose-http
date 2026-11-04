@@ -56,10 +56,10 @@ Goose setup needs CMake 3.27+ and a C++20 compiler. Native dependencies apply to
 both `goose run` and building executables. Use a maintained system libcurl/TLS
 package: the library does not vendor TLS or implement cryptography.
 
-No automatic redirects, retries, environment proxies, netrc, cookie store,
-pooling, streaming sinks or file writes. Every call creates a fresh easy handle;
-this favors a simple ownership contract over keep-alive throughput. URLs from
-untrusted input need application authorization; private network access is
+No automatic redirects, retries, environment proxies, netrc, cookie store, or
+connection pooling. Response bodies may be fetched as a single bounded buffer via
+`request` or consumed incrementally using the pull-based streaming transfer client.
+URLs from untrusted input need application authorization; private network access is
 permitted. Choose body/header limits for the expected payload: the public API initializes
 those capacities before receiving data, so smaller limits reduce preparation work.
 
@@ -67,6 +67,78 @@ those capacities before receiving data, so smaller limits reduce preparation wor
 threaded DNS resolver cleanup can wait for a slow system resolver after timeout.
 Applications requiring a strict deadline need a suitable resolver/transport or
 process supervision. See the contract for the DNS cleanup and signal policy.
+
+## Streaming Transfers
+
+`open_stream`, `read_chunk`, and `close_stream` provide a bounded, pull-based client
+for streaming large HTTPS response bodies chunk-by-chunk without whole-response memory
+buffering (e.g. streaming chunks into incremental SHA-256 or disk spooling).
+
+```goose
+import http from "carabistouflette/goose-http";
+import std;
+
+fn main() {
+    let options = http::StreamOptions {
+        chunk_limit:  65536,
+        body_limit:   67108864, // 64 MiB total cap
+        header_limit: 65536,
+    };
+    var handle = http::StreamHandle {};
+    let open_st = http::open_stream("https://example.com/stream", options, handle);
+    if open_st.error != http::Error.None {
+        print("open failed: ", open_st.error);
+        return;
+    }
+
+    var chunk: u8[>..] = [];
+    var headers: u8[>..] = [];
+    while true {
+        let step, st = http::read_chunk(handle, chunk, headers, 1000);
+        if step == http::StreamStep.Chunk {
+            // chunk is replaced with positive length <= options.chunk_limit
+            // handle.total_bytes tracks cumulative delivered body bytes
+            // handle.status_code reflects current HTTP response status
+            continue;
+        }
+        if step == http::StreamStep.IdleTimeout {
+            // Continuable: step timeout elapsed without data, transfer still active
+            continue;
+        }
+        if step == http::StreamStep.Done {
+            // Terminal normal completion: chunk is empty, st.error == None
+            break;
+        }
+        // Terminal error or cancellation: chunk is empty
+        print("streaming halted: step=", step, ", error=", st.error);
+        break;
+    }
+    http::close_stream(handle);
+}
+```
+
+### Streaming API Reference
+
+| Operation / Type | Signature | Description |
+|---|---|---|
+| `open_stream` | `(url: const u8[:], options: const StreamOptions&, handle: StreamHandle&) -> Status` | Setup-only; performs no network I/O or blocking waits. Validates inputs, claims a native registry slot, initializes libcurl easy and multi handles, and sets `handle.id`. |
+| `read_chunk` | `(handle: StreamHandle&, chunk_out: u8[>..]&, headers_out: u8[>..]&, step_timeout_ms: i32) -> StreamStep, Status` | Drives network transfers and header reading. Returns `Chunk`, `IdleTimeout`, `Done`, `Error`, or `Cancelled`. `chunk_out` is replaced each call and empty on non-Chunk steps. |
+| `close_stream` | `(handle: StreamHandle&) -> Status` | Aborts active transfer, unregisters slot, frees native buffers and libcurl handles. Sets `handle.id = 0`. Idempotent when called with zeroed handle. Status reports cleanup result. |
+| `StreamOptions` | `struct` | Transfer options: `timeout_ms` (overall transfer budget, default 30000ms), `connect_timeout_ms` (default 10000ms), `chunk_limit` (default 64 KiB, max 1 MiB), `body_limit` (default 64 MiB), `header_limit` (default 64 KiB, max 256 KiB), `headers` (`Header` list), `allow_http` (default false). |
+| `StreamStep` | `enum` | Step outcome: `Chunk` (0), `IdleTimeout` (1), `Done` (2), `Error` (3), `Cancelled` (4). |
+| `StreamHandle` | `struct` | Opaque handle state: `id: u64` (generational handle ID), `status_code: i64` (HTTP response code), `total_bytes: i64` (cumulative delivered body bytes). |
+
+### Streaming Guarantees & Contract
+
+- **Single Logical Reader**: A given `StreamHandle` must be driven by a single logical reader sequentially between steps. Concurrent operations across distinct handles are thread-safe.
+- **Generational Slot Registry & Retirement**: Up to 32 concurrent active stream slots (`GH_MAX_STREAMS`). Handle IDs combine a 48-bit generation and 16-bit slot index (`(gen << 16) | (slot + 1)`). Generations are permanently retired at `GH_MAX_GENERATION` (`0x7FFFFFFFFFFFLL`). Exhausted slots are never re-allocated and IDs never wrap, preventing stale handle alias resurrection or use-after-free.
+- **Bounded Ring Buffer & Backpressure**: Native backpressure is maintained using an internal ring buffer sized to `max(2 * chunk_limit, 128 KiB)`. When the ring buffer fills, libcurl's write callback pauses transfer (`CURL_WRITEFUNC_PAUSE`). Once at least 16 KiB is consumed via `read_chunk`, transfer is resumed (`curl_easy_pause(CURLPAUSE_CONT)`).
+- **Forced HTTP/1.1 & Identity Encoding**: Streaming connections enforce `CURL_HTTP_VERSION_1_1` and `Accept-Encoding: identity` with automatic content decoding disabled (`CURLOPT_HTTP_CONTENT_DECODING = 0`). This prevents HTTP/2/3 flow-control window buffering (which can bloat pause buffers to 10 MiB+) and avoids transparent chunk decompression caching.
+- **Empty Output on Terminal Steps**: `chunk_out` is cleared and replaced on every call; on `Done`, `IdleTimeout`, `Error`, or `Cancelled`, `chunk_out` is guaranteed to be empty.
+- **Cumulative Delivered Bytes**: `handle.total_bytes` accurately tracks the cumulative sum of body bytes delivered to `chunk_out` after each chunk copy, with no 1-step lag.
+- **No Native-to-Goose Callbacks**: Control flow is strictly pull-based. Libcurl callbacks execute synchronously inside native C; no Goose closures or callbacks cross the native boundary.
+- **Cleanup Error Domain**: `close_stream` surfaces cleanup failures in `Status.transport_code` using the `CURLMcode` (libcurl multi error) domain.
+- **No Universal Hard Wall-Clock Deadlines**: `timeout_ms` represents the transfer budget. Threaded resolver cleanup (`getaddrinfo`) and cleanup cancellation cannot be aborted instantaneously at OS level; strict wall-clock deadlines require external process supervision.
 
 ## Development
 
