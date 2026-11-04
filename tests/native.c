@@ -59,6 +59,11 @@ int main(int argc, char **argv) {
     CHECK(meta[1] == 302 && meta[2] == 8 && !memcmp(out, "redirect", 8));
     CHECK(call("/partial", 0, none, none, 2000, out, sizeof out, head, sizeof head, meta) == TRANSPORT);
     CHECK(meta[0] == CURLE_PARTIAL_FILE && meta[2] == 0 && meta[3] == 0);
+    static const char *truncated[] = {"/truncated-status", "/truncated-headers", "/truncated-after-informational", "/truncated-lowercase-status"};
+    for (size_t i = 0; i < sizeof truncated / sizeof *truncated; ++i) {
+        CHECK(call(truncated[i], 0, none, none, 2000, out, sizeof out, head, sizeof head, meta) == TRANSPORT);
+        CHECK(meta[0] != CURLE_OK && meta[1] == 200 && meta[2] == 0 && meta[3] == 0);
+    }
     CHECK(call("/timeout", 0, none, none, 50, out, sizeof out, head, sizeof head, meta) == TIMEOUT);
     CHECK(meta[0] == CURLE_OPERATION_TIMEDOUT && meta[2] == 0 && meta[3] == 0);
     CHECK(call("/trailers", 0, none, none, 2000, out, sizeof out, head, sizeof head, meta) == OK);
@@ -90,6 +95,17 @@ int main(int argc, char **argv) {
                          (gh_output){out, sizeof out}, (gh_output){head, sizeof head},
                          (gh_metadata){meta, 4}) == INVALID);
     }
+    char empty_authority[9000];
+    CHECK(!strncmp(base, "http://", 7));
+    CHECK(snprintf(empty_authority, sizeof empty_authority, "http:///%s/binary", base + 7) < (int)sizeof empty_authority);
+    CHECK(gh_request(input(empty_authority, strlen(empty_authority)), 0, none, none, 2000, 1,
+                     (gh_output){out, sizeof out}, (gh_output){head, sizeof head},
+                     (gh_metadata){meta, 4}) == INVALID);
+    CHECK(!strncmp(argv[2], "https://", 8));
+    CHECK(snprintf(empty_authority, sizeof empty_authority, "https:///%s/binary", argv[2] + 8) < (int)sizeof empty_authority);
+    CHECK(gh_request(input(empty_authority, strlen(empty_authority)), 0, none, none, 2000, 0,
+                     (gh_output){out, sizeof out}, (gh_output){head, sizeof head},
+                     (gh_metadata){meta, 4}) == INVALID);
     static const char *bad_headers[] = {"Host: evil", "cOnTeNt-LeNgTh: 5", "Transfer-Encoding: chunked",
         "Connection: keep-alive", "Proxy-Connection: x", "TE: trailers", "Trailer: x", "Upgrade: x",
         "Expect: x", "Accept-Encoding: gzip", "X-Test: ok\r\nInjected: yes", "Bad Name: x", ": empty", "NoColon"};

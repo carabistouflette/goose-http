@@ -22,6 +22,14 @@ fn invalid_header(name: const u8[:], value: const u8[:]) {
     let fields = [http::Header { name: name, value: value }];
     invalid_options(http::Options { headers: fields });
 }
+fn truncated_response(url: const u8[:]) {
+    var body = str("old body");
+    var headers = str("old headers");
+    let options = http::Options { allow_http: true };
+    let status = http::request(url, options, body, headers);
+    assert(status.error == http::Error.Transport && !http::success(status));
+    assert(status.transport_code != 0 && status.status_code == 200 && body.len == 0 && headers.len == 0);
+}
 fn contains(haystack: const u8[:], needle: const u8[:]) -> bool {
     if needle.len > haystack.len { return false; }
     for i in 0..haystack.len - needle.len + 1 {
@@ -62,6 +70,8 @@ fn main() {
     assert(argv.len == 3);
     let base: const u8[:] = argv[1];
     let tls:  const u8[:] = argv[2];
+    invalid_url(str("http:///", base[7..], "/binary"));
+    invalid_url(str("https:///", tls[8..], "/binary"));
     for url in ["", "file:///etc/passwd", "ftp://example.invalid", "http://", "https://", "https://user:password@example.invalid", "https://user@example.invalid", "https://example.invalid/#fragment", "https://example.invalid/has space", "https://example.invalid/\r\nInjected", "https://example.invalid/\x00suffix", "https://example.invalid/\xff"] { invalid_url(url); }
     var long_url = str("https://example.invalid/");
     long_url.resize(8193, 'x');
@@ -136,6 +146,9 @@ fn main() {
     options.timeout_ms = 30000;
     status = http::request(str(base, "/partial"), options, body, headers);
     assert(status.error == http::Error.Transport && body.len == 0 && headers.len == 0);
+    for path in ["/truncated-status", "/truncated-headers", "/truncated-after-informational", "/truncated-lowercase-status"] {
+        truncated_response(str(base, path));
+    }
     status = http::request(str(base, "/trailers"), options, body, headers);
     assert(http::success(status) && body == "abc");
     assert(contains(headers, "103 Early Hints") && contains(headers, "X-End: done"));

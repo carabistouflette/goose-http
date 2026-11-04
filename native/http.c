@@ -62,6 +62,24 @@ static bool valid_header(const uint8_t *p, size_t n) {
     return true;
 }
 
+/* Header callbacks include informational status blocks and trailers. Only the
+ * final status block must be complete; a prior 1xx separator is insufficient.
+ * Delegate parsing to libcurl and track only its status-line/blank-line events. */
+typedef struct { buffer bytes; bool started, complete; } header_buffer;
+static size_t receive_header(char *data, size_t size, size_t count, void *opaque) {
+    header_buffer *headers = opaque;
+    size_t n = receive(data, size, count, &headers->bytes);
+    if (headers->bytes.exceeded) return n;
+    if (n >= 5 && equal_name((const uint8_t *)data, 5, "http/")) {
+        headers->started = true;
+        headers->complete = false;
+    } else if (headers->started &&
+               ((n == 2 && data[0] == '\r' && data[1] == '\n') || (n == 1 && data[0] == '\n'))) {
+        headers->complete = true;
+    }
+    return n;
+}
+
 int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input upload,
                    int64_t timeout_ms, int64_t allow_http, gh_output out,
                    gh_output headers, gh_metadata meta) {
@@ -85,6 +103,8 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     bool https = url.len >= 8 && !memcmp(url.data, "https://", 8);
     bool http = url.len >= 7 && !memcmp(url.data, "http://", 7);
     if (!https && !(http && allow_http)) return GH_INVALID;
+    int64_t authority = https ? 8 : 7;
+    if (url.len <= authority || url.data[authority] == '/' || url.data[authority] == '?') return GH_INVALID;
     char address[8193];
     memcpy(address, url.data, (size_t)url.len); address[url.len] = 0;
     /* Validate all packed lines BEFORE allocating curl header nodes. */
@@ -117,7 +137,7 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     int64_t result = GH_SETUP;
     CURLcode code = CURLE_OK;
     buffer body = {out.data, (size_t)out.len, 0, false};
-    buffer head = {headers.data, (size_t)headers.len, 0, false};
+    header_buffer head = {{headers.data, (size_t)headers.len, 0, false}, false, false};
     char empty_line[65537];
     for (pos = 0; pos < (size_t)packed.len;) {
         /* libcurl treats 'Name:' as suppression; ';' explicitly sends an empty value. */
@@ -156,7 +176,7 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     SET(CURLOPT_HTTPHEADER, list);
     SET(CURLOPT_WRITEFUNCTION, receive);
     SET(CURLOPT_WRITEDATA, &body);
-    SET(CURLOPT_HEADERFUNCTION, receive);
+    SET(CURLOPT_HEADERFUNCTION, receive_header);
     SET(CURLOPT_HEADERDATA, &head);
     if (method) {
         SET(CURLOPT_POST, 1L);
@@ -167,10 +187,11 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     long status = 0;
     CURLcode info = curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
     if (info != CURLE_OK && code == CURLE_OK) code = info;
+    if (code == CURLE_OK && !head.complete) code = CURLE_PARTIAL_FILE;
     meta.data[1] = status;
-    result = body.exceeded ? GH_BODY : head.exceeded ? GH_HEADERS :
+    result = body.exceeded ? GH_BODY : head.bytes.exceeded ? GH_HEADERS :
              code == CURLE_OPERATION_TIMEDOUT ? GH_TIMEOUT : code != CURLE_OK ? GH_TRANSPORT : GH_OK;
-    if (result == GH_OK) { meta.data[2] = (int64_t)body.used; meta.data[3] = (int64_t)head.used; }
+    if (result == GH_OK) { meta.data[2] = (int64_t)body.used; meta.data[3] = (int64_t)head.bytes.used; }
 done:
     meta.data[0] = code;
     curl_slist_free_all(list); curl_easy_cleanup(curl);

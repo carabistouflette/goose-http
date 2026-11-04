@@ -60,6 +60,16 @@ class Handler(socketserver.StreamRequestHandler):
                 data = response(b"redirect", b"302 Found", b"Location: /binary\r\n")
             elif path == b"/partial":
                 data = b"HTTP/1.1 200 OK\r\nContent-Length: 20\r\n\r\nabc"
+            elif path == b"/truncated-status":
+                data = b"HTTP/1.1 200 OK\r\n"
+            elif path == b"/truncated-headers":
+                data = b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n"
+            elif path == b"/truncated-after-informational":
+                data = (b"HTTP/1.1 103 Early Hints\r\nLink: </hint>\r\n\r\n"
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 1\r\n")
+            elif path == b"/truncated-lowercase-status":
+                data = (b"HTTP/1.1 103 Early Hints\r\n\r\n"
+                        b"http/1.1 200 OK\r\nContent-Length: 1\r\n")
             elif path == b"/timeout":
                 time.sleep(0.3)
                 data = response(b"late")

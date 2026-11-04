@@ -61,6 +61,8 @@ fn request(url: const u8[:], options: const Options&, body: u8[>..]&, headers: u
         options.body_limit < 0 || options.body_limit > 16777216 ||
         options.header_limit < 0 || options.header_limit > 262144 { return invalid; }
     if !starts_with(url, "https://") && !(options.allow_http && starts_with(url, "http://")) { return invalid; }
+    let authority = if starts_with(url, "https://") { 8 } else { 7 };
+    if url.len <= authority || url[authority] == '/' || url[authority] == '?' { return invalid; }
     for c in url { if c <= 32 || c >= 127 || c == '#' { return invalid; } }
     var total: i64 = 0;
     for header in options.headers {
