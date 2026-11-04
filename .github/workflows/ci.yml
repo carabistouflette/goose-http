@@ -33,4 +33,5 @@ jobs:
             .build/metadata-fuzz-corpus.bin
             .build/metadata-fuzz-failure.bin
             .build/metadata-fuzz-crash.bin
-          if-no-files-found: ignore
+          include-hidden-files: true
+          if-no-files-found: error

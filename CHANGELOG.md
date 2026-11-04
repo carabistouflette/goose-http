@@ -9,6 +9,8 @@
   alongside Ubuntu's libcurl 8.5 full suite. Distro security updates remain enabled.
 - Synchronize the strict HTTP/2 reset fixture with a PING acknowledgement; retain
   an immediate-reset metadata capability probe for older libcurl backends.
+- Fix CI evidence uploads from the hidden build directory; retain per-mode
+  reports and failure reproducers using an explicit file allowlist.
 
 ## 0.1.0 — 2026-11-04 (experimental prerelease)
 
