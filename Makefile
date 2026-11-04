@@ -54,8 +54,9 @@ sanitize:
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 scripts/run.py .build/dns-sanitize
 fuzz:
 	mkdir -p .build/fuzz-corpus
-	$(FUZZ_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined -pthread tests/fuzz.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/fuzz
-	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 .build/fuzz -runs=$(FUZZ_RUNS) -seed=491 -max_len=8192 -timeout=5 -artifact_prefix=.build/ .build/fuzz-corpus
+	python3 scripts/fuzz-seeds.py
+	$(FUZZ_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined -pthread tests/fuzz.c native/http.c $(CURL_FLAGS) -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -o .build/fuzz
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 .build/fuzz -runs=$(FUZZ_RUNS) -seed=491 -max_len=65536 -timeout=5 -artifact_prefix=.build/ .build/fuzz-corpus
 bench:
 	mkdir -p .build
 	$(CC) $(CFLAGS) -O2 -pthread bench/client.c native/http.c $(CURL_FLAGS) -o .build/bench
