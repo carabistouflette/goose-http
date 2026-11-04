@@ -5,7 +5,7 @@ A small, bounded synchronous HTTP client for the
 Experimental API; no tagged release yet. Tested on Linux x86-64; POSIX native adapter.
 macOS and Windows are not validated/supported in this initial version.
 
-GET and binary POST, explicit request headers and deadlines, bounded response
+GET and binary POST, explicit request headers and transfer timeouts, bounded response
 body/header buffers, and verified TLS through a private libcurl adapter. Goose
 owns returned storage. Redirects are returned to the caller for an explicit
 policy. HTTPS is the default; cleartext HTTP needs `allow_http: true`.
@@ -55,7 +55,13 @@ No automatic redirects, retries, environment proxies, netrc, cookie store,
 pooling, streaming sinks or file writes. Every call creates a fresh easy handle;
 this favors a simple ownership contract over keep-alive throughput. URLs from
 untrusted input need application authorization; private network access is
-permitted. See the contract for bounds, DNS deadlines and signal policy.
+permitted. Choose body/header limits for the expected payload: the public API initializes
+those capacities before receiving data, so smaller limits reduce preparation work.
+
+`timeout_ms` bounds libcurl's transfer work, but **not total call wall time**:
+threaded DNS resolver cleanup can wait for a slow system resolver after timeout.
+Applications requiring a strict deadline need a suitable resolver/transport or
+process supervision. See the contract for the DNS cleanup and signal policy.
 
 ## Development
 

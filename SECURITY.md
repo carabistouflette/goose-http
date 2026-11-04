@@ -14,8 +14,10 @@ This is not an SSRF boundary: callers must authorize destinations, including
 resolved private/local addresses, when URLs are untrusted. The API permits local
 network access. Applications own redirect, credential and signal policy. Response
 buffers are empty on any error. Fixed input/output caps bound library work and
-storage but are not an exact allocator or native TLS memory budget. The timeout
-is not a hard real-time scheduling guarantee. See [the contract](docs/API.md).
+storage but are not an exact allocator or native TLS memory budget. The timeout does not bound call wall time: libcurl's threaded DNS cleanup can
+wait for a system resolver beyond the requested transfer timeout. Asynchronous
+DNS support alone does not guarantee cancellation. Do not rely on this API for
+a hard cancellation deadline. See the contract for resolver/build choices. See [the contract](docs/API.md).
 
 CI exercises Goose run/release/debug, ownership rejection, local HTTP/TLS,
 fault injection, GCC/Clang AddressSanitizer/UndefinedBehaviorSanitizer and a

@@ -32,7 +32,9 @@ and bytes delivered by libcurl's header callback (including informational
 responses and trailers) are returned. The library adds no header normalization
 or merging. These are not guaranteed to be raw wire bytes: libcurl may unfold
 HTTP/1 headers or render HTTP/2 headers as text. Output buffers are empty on ANY error;
-partial network responses must not be consumed as complete data.
+partial network responses must not be consumed as complete data. A successful
+transfer also requires the final response header section to be complete, even
+when libcurl returns success at EOF before that section terminates.
 
 TLS certificate/hostname verification stays enabled. No insecure switch. Default
 system trust store; no custom CA option in v1. No automatic redirects (return 3xx
@@ -50,8 +52,15 @@ async API, pooling, streaming sinks, file writes or registry policy in v1. Bound
 buffering is the first milestone; streaming should get a separate reviewed API.
 No TLS or HTTP parser is implemented here. Transport codes are libcurl CURLcode;
 errors distinguish InvalidInput, SetupFailed, Transport, TimedOut, BodyLimit,
-HeaderLimit. Total timeout includes DNS with supported asynchronous resolver;
-libcurl callbacks and OS scheduling mean it is not a hard real-time guarantee.
+HeaderLimit. `timeout_ms` sets libcurl's transfer timeout, including resolution,
+connection, TLS and transfer work inside `curl_easy_perform`. It does **not** bound
+`request` wall time: with libcurl's threaded resolver, cleanup joins an outstanding
+system `getaddrinfo` call, which may block beyond the timeout. `ASYNCHDNS` alone
+does not imply cancellable DNS. A c-ares resolver build avoids this specific
+thread-join limitation; no build promises hard real-time scheduling. Applications
+requiring a strict wall-clock deadline need a cancellation-capable transport or
+an external process supervisor. The adapter performs normal cleanup rather than
+leaking outstanding resolver work.
 
 The adapter does not install signal handlers. With NOSIGNAL, libcurl documents
 that applications may need to handle SIGPIPE for some TLS backends; see
