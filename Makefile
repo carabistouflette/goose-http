@@ -64,6 +64,8 @@ native:
 	python3 tests/runtime.py .build/runtime
 	$(CC) $(CFLAGS) -O2 -pthread -DGH_MAX_GENERATION=3 tests/stream_retire.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/stream_retire
 	./.build/stream_retire
+	$(CC) $(CFLAGS) -O2 -pthread tests/clock_failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=clock_gettime -o .build/clock_failures
+	./.build/clock_failures
 sanitize:
 	mkdir -p .build
 	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/native.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/native-sanitize
@@ -78,6 +80,8 @@ sanitize:
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/runtime.py .build/runtime-sanitize
 	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread -DGH_MAX_GENERATION=3 tests/stream_retire.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/stream_retire-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/stream_retire-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/clock_failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=clock_gettime -o .build/clock_failures-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/clock_failures-sanitize
 fuzz:
 	mkdir -p .build/fuzz-corpus
 	python3 scripts/fuzz-seeds.py

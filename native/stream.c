@@ -78,12 +78,13 @@ static size_t gh_ring_read(gh_ring *r, uint8_t *dst, size_t n) {
     return n;
 }
 
-static int64_t gh_now_ms(void) {
+static bool gh_now_ms(int64_t *out_ms) {
     struct timespec ts;
     if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) {
-        return 0;
+        return false;
     }
-    return (int64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+    *out_ms = (int64_t)ts.tv_sec * 1000 + (ts.tv_nsec / 1000000);
+    return true;
 }
 
 typedef struct {
@@ -387,7 +388,9 @@ int64_t gh_stream_open(gh_input url, gh_input packed, int64_t timeout_ms,
     slot->chunk_limit = chunk_limit;
     slot->body_limit = body_limit;
     slot->header_limit = header_limit;
-    slot->start_time_ms = gh_now_ms();
+    int64_t start_ms = 0;
+    if (!gh_now_ms(&start_ms)) goto fail_setup;
+    slot->start_time_ms = start_ms;
     slot->total_bytes = 0;
     slot->status_code = 0;
     slot->last_curl_code = CURLE_OK;
@@ -530,7 +533,20 @@ int64_t gh_stream_step(int64_t handle_id, int64_t step_timeout_ms, gh_metadata m
         return 3;
     }
 
-    int64_t now = gh_now_ms();
+    int64_t now = 0;
+    if (!gh_now_ms(&now)) {
+        slot->transfer_error = true;
+        slot->error_code = GH_TRANSPORT;
+        slot->last_curl_code = CURLE_FAILED_INIT;
+        meta.data[0] = 3;
+        meta.data[1] = GH_TRANSPORT;
+        meta.data[3] = (int64_t)slot->header_used;
+        meta.data[4] = slot->status_code;
+        meta.data[5] = slot->total_bytes;
+        meta.data[6] = (int64_t)CURLE_FAILED_INIT;
+        pthread_mutex_unlock(&slot->lock);
+        return 3;
+    }
     int64_t elapsed = now - slot->start_time_ms;
     if (elapsed >= slot->timeout_ms) {
         slot->transfer_error = true;
@@ -561,7 +577,7 @@ int64_t gh_stream_step(int64_t handle_id, int64_t step_timeout_ms, gh_metadata m
     int64_t wait_ms = step_timeout_ms;
     if (wait_ms > total_rem) wait_ms = total_rem;
     if (wait_ms < 0) wait_ms = 0;
-    int64_t step_deadline = gh_now_ms() + wait_ms;
+    int64_t step_deadline = now + wait_ms;
 
     int still_running = 0;
     while (1) {
@@ -576,7 +592,15 @@ int64_t gh_stream_step(int64_t handle_id, int64_t step_timeout_ms, gh_metadata m
         if (slot->ring.count > 0 || slot->transfer_done || slot->transfer_error) break;
         if (still_running == 0) break;
 
-        int64_t rem = step_deadline - gh_now_ms();
+        int64_t loop_now = 0;
+        if (!gh_now_ms(&loop_now)) {
+            slot->transfer_error = true;
+            slot->error_code = GH_TRANSPORT;
+            slot->last_curl_code = CURLE_FAILED_INIT;
+            break;
+        }
+
+        int64_t rem = step_deadline - loop_now;
         if (rem <= 0) break;
 
         int numfds = 0;
@@ -625,7 +649,20 @@ int64_t gh_stream_step(int64_t handle_id, int64_t step_timeout_ms, gh_metadata m
         return 2;
     }
 
-    now = gh_now_ms();
+    if (!gh_now_ms(&now)) {
+        slot->transfer_error = true;
+        slot->error_code = GH_TRANSPORT;
+        slot->last_curl_code = CURLE_FAILED_INIT;
+        meta.data[0] = 3;
+        meta.data[1] = GH_TRANSPORT;
+        meta.data[2] = 0;
+        meta.data[3] = (int64_t)slot->header_used;
+        meta.data[4] = slot->status_code;
+        meta.data[5] = slot->total_bytes;
+        meta.data[6] = (int64_t)CURLE_FAILED_INIT;
+        pthread_mutex_unlock(&slot->lock);
+        return 3;
+    }
     if (now - slot->start_time_ms >= slot->timeout_ms) {
         slot->transfer_error = true;
         slot->error_code = GH_TIMEOUT;
