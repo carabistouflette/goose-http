@@ -75,6 +75,130 @@ fn identity_header(base: const u8[:], value: const u8[:]) {
     let compressed = http::request(str(base, "/gzip"), options, body, headers);
     assert(http::success(compressed) && body.len > 2 && body[0] == 31 && body[1] == 139);
 }
+
+fn test_streaming(base: const u8[:]) {
+    var handle = http::StreamHandle {};
+    let inv_opt = http::StreamOptions { .. };
+    let inv_status = http::open_stream("not-a-url", inv_opt, handle);
+    assert(inv_status.error == http::Error.InvalidInput && handle.id == 0);
+
+    let no_http_opt = http::StreamOptions { allow_http: false };
+    let no_http_status = http::open_stream(str(base, "/binary"), no_http_opt, handle);
+    assert(no_http_status.error == http::Error.InvalidInput && handle.id == 0);
+
+    let bad_chunk_opt = http::StreamOptions { allow_http: true, chunk_limit: 0 };
+    let bad_chunk = http::open_stream(str(base, "/binary"), bad_chunk_opt, handle);
+    assert(bad_chunk.error == http::Error.InvalidInput && handle.id == 0);
+
+    // Reopening a live handle must be rejected with InvalidInput
+    var live_handle = http::StreamHandle {};
+    let live_opt = http::StreamOptions { allow_http: true };
+    let live_st = http::open_stream(str(base, "/binary"), live_opt, live_handle);
+    assert(live_st.error == http::Error.None);
+    assert(live_handle.id != 0);
+    let reopen_st = http::open_stream(str(base, "/binary"), live_opt, live_handle);
+    assert(reopen_st.error == http::Error.InvalidInput);
+    assert(http::close_stream(live_handle).error == http::Error.None);
+
+    let opt = http::StreamOptions { allow_http: true, chunk_limit: 4 };
+    let open_st = http::open_stream(str(base, "/binary"), opt, handle);
+    assert(open_st.error == http::Error.None && handle.id != 0);
+    assert(handle.status_code == 0 && handle.total_bytes == 0);
+
+    var chunk:       u8[>..] = [];
+    var headers:     u8[>..] = [];
+    var accumulated: u8[>..] = [];
+
+    for iter in 100 {
+        let step, st = http::read_chunk(handle, chunk, headers, 1000);
+        if step == http::StreamStep.Chunk {
+            assert(st.error == http::Error.None && chunk.len > 0 && chunk.len <= 4);
+            assert(handle.status_code == 200);
+            assert(headers.len > 0);
+            accumulated.append(chunk);
+        } else if step == http::StreamStep.Done {
+            assert(st.error == http::Error.None && chunk.len == 0);
+            break;
+        } else if step == http::StreamStep.IdleTimeout {
+            continue;
+        } else {
+            assert(false);
+        }
+    }
+    assert(accumulated == "goose\x00\xff\r\nbody");
+    assert(handle.total_bytes == accumulated.len);
+
+    let post_step, post_st = http::read_chunk(handle, chunk, headers, 100);
+    assert(post_step == http::StreamStep.Done && chunk.len == 0 && post_st.error == http::Error.None);
+
+    let close_st = http::close_stream(handle);
+    assert(close_st.error == http::Error.None && handle.id == 0);
+
+    let double_close = http::close_stream(handle);
+    assert(double_close.error == http::Error.None && handle.id == 0);
+
+    let stale_step, stale_st = http::read_chunk(handle, chunk, headers, 100);
+    assert(stale_step == http::StreamStep.Error && stale_st.error == http::Error.InvalidInput);
+
+    let mc_opt = http::StreamOptions { allow_http: true, chunk_limit: 1024 };
+    var mc_handle = http::StreamHandle {};
+    assert(http::open_stream(str(base, "/stream-chunks"), mc_opt, mc_handle).error == http::Error.None);
+    var mc_data: u8[>..] = [];
+    for iter in 100 {
+        let step, st = http::read_chunk(mc_handle, chunk, headers, 1000);
+        if step == http::StreamStep.Chunk {
+            mc_data.append(chunk);
+        } else if step == http::StreamStep.Done {
+            break;
+        } else if step == http::StreamStep.IdleTimeout {
+            continue;
+        } else {
+            assert(false);
+        }
+    }
+    assert(mc_data == "chunk-1:chunk-2:chunk-3:done");
+    assert(mc_handle.total_bytes == mc_data.len);
+    http::close_stream(mc_handle);
+
+    let lim_opt = http::StreamOptions { allow_http: true, body_limit: 10 };
+    var lim_handle = http::StreamHandle {};
+    assert(http::open_stream(str(base, "/stream-chunks"), lim_opt, lim_handle).error == http::Error.None);
+    var hit_limit = false;
+    for iter in 100 {
+        let step, st = http::read_chunk(lim_handle, chunk, headers, 1000);
+        if step == http::StreamStep.Error {
+            assert(st.error == http::Error.BodyLimit);
+            assert(chunk.len == 0);
+            hit_limit = true;
+            break;
+        }
+    }
+    assert(hit_limit);
+    http::close_stream(lim_handle);
+
+    let slow_opt = http::StreamOptions { allow_http: true, chunk_limit: 64 };
+    var slow_handle = http::StreamHandle {};
+    assert(http::open_stream(str(base, "/stream-slow"), slow_opt, slow_handle).error == http::Error.None);
+    var got_idle = false;
+    for iter in 50 {
+        let step, st = http::read_chunk(slow_handle, chunk, headers, 10);
+        if step == http::StreamStep.IdleTimeout {
+            assert(st.error == http::Error.None && chunk.len == 0);
+            got_idle = true;
+        } else if step == http::StreamStep.Done {
+            break;
+        }
+    }
+    assert(got_idle);
+    http::close_stream(slow_handle);
+
+    var abort_handle = http::StreamHandle {};
+    assert(http::open_stream(str(base, "/binary"), opt, abort_handle).error == http::Error.None);
+    assert(abort_handle.id != 0);
+    assert(http::close_stream(abort_handle).error == http::Error.None);
+    assert(abort_handle.id == 0);
+}
+
 fn main() {
     let argv = args();
     assert(argv.len == 3);
@@ -181,5 +305,6 @@ fn main() {
     options.body_limit = 0;
     status = http::request(binary_url, options, body, body);
     assert(status.error == http::Error.InvalidInput && body.len == 0);
+    test_streaming(base);
     print("HTTP API tests passed");
 }
