@@ -42,3 +42,15 @@ Internet services, every resolver/TLS backend and unsupported platforms are not
 covered. The threaded-DNS cleanup and SIGPIPE caveats in [the API contract](../docs/API.md)
 remain application integration constraints. Performance measurements have their
 own [boundaries](../bench/PROFILE.md); these protocol tests have no timing ranking.
+
+The unsized HTTP/2 trailer case strictly requires the final trailer callback.
+A separate known-length case reports callback delivery as a backend capability:
+libcurl 8.5 can finish a Content-Length response without delivering its trailers,
+whereas the locally tested 8.23.0 delivers them. It still must return the complete
+body and informational/final headers. This probe does not silently turn a missing
+critical field into application success; callers must validate required fields.
+The fixture and assertions are tested against both upstream 8.5.0 and system
+8.23.0, with Python hyper-h2 4.4.1. CI additionally exercises Ubuntu's packages.
+The older-backend reproduction used curl's `curl-8_5_0` source tag at
+`7161cb17c01dcff1dc5bf89a18437d9d729f1ecd` (its source version label is
+`8.5.0-DEV`), built separately without changing the installed system library.

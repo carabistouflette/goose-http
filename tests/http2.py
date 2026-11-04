@@ -64,7 +64,7 @@ class Handler(socketserver.BaseRequestHandler):
                             if headers.get('x-empty') != '':
                                 raise AssertionError('empty request field was suppressed')
                             body = b'yes'
-                        elif path == '/trailers':
+                        elif path in ('/trailers', '/trailers-with-length'):
                             connection.send_headers(event.stream_id, [(':status', '103'), ('link', '</hint>')])
                             body, trailers = b'abc', [('x-end', 'done')]
                         elif path == '/redirect':
@@ -91,7 +91,7 @@ class Handler(socketserver.BaseRequestHandler):
                         elif path != '/binary':
                             raise AssertionError('unknown fixture path: ' + path)
                         fields = [(':status', status), ('x-protocol', 'h2')] + extra
-                        if status != '204':
+                        if status != '204' and path != '/trailers':
                             fields.append(('content-length', str(len(body))))
                         connection.send_headers(event.stream_id, fields, end_stream=not body and not trailers)
                         if body or trailers:

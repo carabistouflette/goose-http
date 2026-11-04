@@ -40,6 +40,9 @@ callback, including informational responses and trailers. The library adds no
 normalization; raw wire bytes are not guaranteed. Body bytes have HTTP chunk
 framing removed; content compression is not decoded. Request header values are ASCII, uploads and bodies are
 arbitrary bytes. Buffers must be distinct; inputs cannot borrow outputs.
+Older libcurl backends can omit HTTP/2 trailers on known-length bodies. Require
+and validate any security-critical field explicitly; transfer success alone does
+not verify a digest or other application metadata.
 
 ## Requirements
 

@@ -23,3 +23,9 @@ CI exercises Goose run/release/debug, ownership rejection, local HTTP/1 and HTTP
 stalled-DNS cleanup, incomplete final headers, startup/runtime and allocation fault injection, GCC/Clang AddressSanitizer/UndefinedBehaviorSanitizer and a
 network-disabled libFuzzer harness. These checks improve coverage; they do not
 prove arbitrary server responses safe independently of libcurl's own guarantees.
+
+Header output is the installed libcurl's callback data, not proof of complete
+wire metadata. Older backends can omit HTTP/2 trailers on known-length bodies.
+Callers relying on a digest or other security-relevant field must reject its
+absence and verify its value; transport success alone is insufficient. See the
+[API contract](docs/API.md) and [protocol coverage](tests/README.md).

@@ -31,7 +31,12 @@ No automatic decompression. Transfer-decoded body bytes (chunk framing removed)
 and bytes delivered by libcurl's header callback (including informational
 responses and trailers) are returned. The library adds no header normalization
 or merging. These are not guaranteed to be raw wire bytes: libcurl may unfold
-HTTP/1 headers or render HTTP/2 headers as text. Output buffers are empty on ANY error;
+HTTP/1 headers or render HTTP/2 headers as text. Delivery also depends on the
+installed backend: libcurl 8.5 can omit HTTP/2 trailers when Content-Length is
+present, even though the body completed. The adapter cannot restore a callback
+that libcurl never issued. Applications must explicitly require any critical
+trailer/header (for example, a digest); transport success does not establish
+its presence or verify application payload integrity. Output buffers are empty on ANY error;
 partial network responses must not be consumed as complete data. A successful
 transfer also requires the final response header section to be complete, even
 when libcurl returns success at EOF before that section terminates.

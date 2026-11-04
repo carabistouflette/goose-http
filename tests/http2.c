@@ -67,7 +67,20 @@ int main(int argc, char **argv) {
     CHECK(request("/trailers", 0, none, none, 5000, body, sizeof body, headers, 4096, meta) == OK);
     CHECK(meta[1] == 200 && meta[2] == 3 && !memcmp(body, "abc", 3));
     headers[meta[3]] = 0;
+    if (!strstr((char *)headers, "HTTP/2 103") || !strstr((char *)headers, "x-end: done\r\n")) {
+        fprintf(stderr, "HTTP/2 informational/trailer callback (%lld bytes):\n%.*s\n",
+            (long long)meta[3], (int)meta[3], (char *)headers);
+    }
     CHECK(strstr((char *)headers, "HTTP/2 103") && strstr((char *)headers, "x-end: done\r\n"));
+    CHECK(request("/trailers-with-length", 0, none, none, 5000, body, sizeof body, headers, 4096, meta) == OK);
+    CHECK(meta[1] == 200 && meta[2] == 3 && !memcmp(body, "abc", 3));
+    headers[meta[3]] = 0;
+    CHECK(strstr((char *)headers, "HTTP/2 103") && strstr((char *)headers, "content-length: 3\r\n"));
+    /* This probes the installed backend, not a promise of wire completeness.
+     * Older curl (including 8.5) may finish a known-length body before it emits
+     * the trailer callback. The unsized case above always requires the trailer. */
+    printf("HTTP/2 known-length trailer callback delivered: %s\n",
+        strstr((char *)headers, "x-end: done\r\n") ? "yes" : "no (backend limitation)");
     CHECK(request("/gzip", 0, none, none, 5000, body, sizeof body, headers, 4096, meta) == OK);
     CHECK(meta[2] > 2 && body[0] == 0x1f && body[1] == 0x8b);
     static const char auth[] = "Authorization: Bearer fixture-only\0";
@@ -98,7 +111,7 @@ int main(int argc, char **argv) {
         5000, download, 1048576, headers, 4096, meta) == OK);
     CHECK(meta[2] == 1048576 && !memcmp(download, upload, 1048576));
     free(download); free(upload);
-    CHECK(h2_transfers >= 10);
+    CHECK(h2_transfers >= 11);
     printf("real HTTP/2 TLS passed: %u successful negotiated transfers (%s)\n", h2_transfers, curl_version());
     return 0;
 }
