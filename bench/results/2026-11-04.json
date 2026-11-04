@@ -1,0 +1,51 @@
+{
+  "schema": 2,
+  "workload": "per-call easy handle, HTTP loopback, 4096-byte body",
+  "iterations_per_sample": 100,
+  "platform": "Linux-7.2.11-arch1-1-x86_64-with-glibc2.44",
+  "machine": "x86_64",
+  "processor": "Intel(R) Core(TM) Ultra 7 258V",
+  "cpu_count": 8,
+  "compiler": "cc (GCC) 16.2.1 20260810\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+  "libcurl": "8.23.0",
+  "libcurl_build_flags": "-lcurl",
+  "source_revision": "92b50c924d2f450f77b7493e173c00b027f4fbf7",
+  "source_dirty": false,
+  "goose_revision": "eadca409f68210893f366e60d0c2f0dc29a339be",
+  "goose_executable": "<pinned-goose>",
+  "goose_version": "goose eadca40 (runtime 3025e5810379)",
+  "workloads": [
+    {
+      "label": "native_kernel",
+      "binary": ".build/bench",
+      "body_limit": 4096,
+      "header_limit": 1024,
+      "prezero_output_buffers": false,
+      "flags": "-std=c11 -Wall -Wextra -Werror -O2 -pthread (plus pkg-config libcurl)",
+      "raw_elapsed_ns": [
+        115384337,
+        120590853,
+        117088550,
+        115559474,
+        118652693
+      ]
+    },
+    {
+      "label": "goose_public_defaults",
+      "binary": ".build/bench-goose",
+      "body_limit": 1048576,
+      "header_limit": 65536,
+      "prezero_output_buffers": true,
+      "flags": "goose build --cc cc -O2 (native CMake Release)",
+      "raw_elapsed_ns": [
+        115650048,
+        168650236,
+        115460620,
+        165770155,
+        166351102
+      ]
+    }
+  ],
+  "publication_note": "Only executable path names are normalized; all raw durations and measurement metadata are unchanged.",
+  "recorded_date_utc": "2026-11-04"
+}

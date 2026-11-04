@@ -24,3 +24,6 @@ Each request gets a fresh connection, as the public contract requires. Different
 buffer contracts mean the samples are not competing implementations or universal
 rankings. No performance threshold is implied. Profile representative application
 workloads before adding pooling or changing ownership. CI checks execution only.
+
+A [recorded local sample](RESULTS.md) includes the unaggregated durations and
+full source/toolchain/environment provenance.
