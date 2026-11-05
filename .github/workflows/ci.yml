@@ -2,6 +2,9 @@ name: CI
 on: [push, pull_request]
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   check:
     runs-on: ubuntu-24.04

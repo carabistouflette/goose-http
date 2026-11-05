@@ -40,6 +40,7 @@ from pathlib import Path
 import platform
 import re
 import shlex
+import shutil
 import socket
 import socketserver
 import ssl
@@ -233,12 +234,15 @@ def main():
     compiler_version = run(compiler + ["--version"])
     if not any(name in compiler_version.lower() for name in ("gcc", "clang", "free software foundation")):
         parser.error("--cc must identify GCC or Clang")
+    executable = shutil.which(compiler[0])
+    require(executable is not None, "compiler executable not found")
+    compiler_identity = {"path": str(Path(executable).resolve()), "sha256": digest(Path(executable))}
     started = utc_now()
     source_hashes = {source: digest(ROOT / source) for source in SOURCES}
     head = run(["git", "rev-parse", "HEAD"])
     dirty = run(["git", "status", "--porcelain=v1", "--untracked-files=all"])
     curl_flags = shlex.split(run(["pkg-config", "--cflags", "--libs", "libcurl"]))
-    compile_commands, binary_info = [], {}
+    compile_commands, binary_info, library_hashes = [], {}, {}
 
     def compile_driver(sanitized):
         variant = "sanitize" if sanitized else "release"
@@ -252,6 +256,9 @@ def main():
         run(command)
         binary_info[variant] = {"path": str(binary.relative_to(ROOT)), "sha256": digest(binary),
                                 "flags": flags, "linked_libraries": run(["ldd", str(binary)])}
+        for word in binary_info[variant]["linked_libraries"].split():
+            if word.startswith('/') and Path(word).is_file():
+                library_hashes[str(Path(word).resolve())] = digest(Path(word))
         return binary
 
     sanitized_binary = compile_driver(True)
@@ -316,6 +323,9 @@ def main():
     require(final_counts["requests"] == budget and not final_counts["errors"], final_counts)
     if source_hashes != {source: digest(ROOT / source) for source in SOURCES}:
         raise RuntimeError("measured sources changed during run; refusing report")
+    require(digest(Path(compiler_identity["path"])) == compiler_identity["sha256"], "compiler changed during run")
+    require(all(digest(Path(path)) == value for path, value in library_hashes.items()), "linked library changed during run")
+    require(all(digest(ROOT / value["path"]) == value["sha256"] for value in binary_info.values()), "driver binary changed during run")
     summaries = []
     if not args.sanitize:
         for body in BODIES:
@@ -336,7 +346,8 @@ def main():
         "schema": 1, "started_utc": started, "finished_utc": utc_now(), "mode": kind,
         "configuration": vars(args), "git_head": head, "git_status_porcelain": dirty,
         "source_sha256": source_hashes, "driver_sha256": source_hashes["bench/reuse-measure.py"],
-        "compiler_version": compiler_version, "compile_commands": compile_commands,
+        "compiler_version": compiler_version, "compiler_executable": compiler_identity,
+        "linked_library_sha256": library_hashes, "compile_commands": compile_commands,
         "pkg_config_libcurl_version": run(["pkg-config", "--modversion", "libcurl"]),
         "pkg_config_flags": curl_flags, "binaries": binary_info,
         "system": {"platform": platform.platform(), "machine": platform.machine(), "cpu": cpu_model(),
