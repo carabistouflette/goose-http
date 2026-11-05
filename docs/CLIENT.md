@@ -117,3 +117,29 @@ fields. Release and sanitizer records/commands have separate paths. Raw monotoni
 elapsed samples retain source, binary, compiler, flags, backend and host metadata.
 Shared-host loopback measurements are workload-specific; they do not establish
 public Goose API end-to-end latency, WAN throughput or a universal ranking.
+
+### Recorded reuse run
+
+On 2026-11-05, clean source commit `8b17458e367c657e5e902d8f5b24529b4d8641d8`
+was measured with GCC 16.2.1 and Clang 23.1.4, both using libcurl 8.23.0. Each
+compiler ran seven rotated 30-request samples for 0-byte and 4096-byte bodies.
+The actual native client measurement includes `open_client`, its first verified
+TLS connection, all requests, and `close_client`.
+
+| Compiler | Body bytes | One-shot native | Native client | Median paired speedup |
+| --- | ---: | ---: | ---: | ---: |
+| GCC | 0 | 4,718.9 µs/request | 383.8 µs/request | 12.39× |
+| GCC | 4,096 | 4,737.1 µs/request | 404.1 µs/request | 11.68× |
+| Clang | 0 | 4,755.8 µs/request | 373.4 µs/request | 12.72× |
+| Clang | 4,096 | 4,792.5 µs/request | 402.8 µs/request | 11.89× |
+
+These are one nonexclusive Linux x86-64 run on an Intel Core Ultra 7 258V,
+affined to CPU 3. The fixture checked every response byte, TLS verification,
+HTTP/1.1, and connection count; for 30-request measured batches, cold native
+requests opened 30 TCP connections and the reusable client opened one. The
+results describe this loopback workload only. The compressed raw GCC and Clang
+reports retain sample timings, counters, build commands and hashes; only local
+workspace and temporary fixture paths are redacted:
+
+- [GCC report](../bench/results/reuse-gcc-8b17458-2026-11-05.json.gz), SHA-256 `20523b61cbc1eb2cfade372570b302decaccdc56fd51872204d026623a653dda`
+- [Clang report](../bench/results/reuse-clang-8b17458-2026-11-05.json.gz), SHA-256 `18e8a6b84e8ef7f5584a5fa17bf655299f418a674442bbac496c31f778658cea`
