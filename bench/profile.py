@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import platform
 import shlex
+import shutil
 import statistics
 import subprocess
 
@@ -57,6 +58,11 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.iterations <= 1000000 or not 1 <= args.samples <= 100:
         parser.error("iterations must be 1..1000000 and samples 1..100")
+    destination = Path(args.output)
+    if not destination.is_absolute():
+        destination = ROOT / destination
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.unlink(missing_ok=True)
     if not hasattr(os, "sched_getaffinity"):
         parser.error("this profile harness requires Linux CPU affinity support")
     allowed = sorted(os.sched_getaffinity(0))
@@ -68,6 +74,10 @@ def main():
     compiler = shlex.split(args.cc)
     if not compiler:
         parser.error("--cc must name a compiler")
+    executable = shutil.which(compiler[0])
+    if executable is None:
+        parser.error("compiler executable not found")
+    compiler_identity = {"path": str(Path(executable).resolve()), "sha256": digest(Path(executable).read_bytes())}
     try:
         baseline = run(["git", "rev-parse", "--verify", "--end-of-options", args.baseline + "^{commit}"])
     except subprocess.CalledProcessError:
@@ -75,34 +85,50 @@ def main():
     curl_cflags = shlex.split(run(["pkg-config", "--cflags", "libcurl"]))
     curl_libs = shlex.split(run(["pkg-config", "--libs", "libcurl"]))
     curl_flags = curl_cflags + curl_libs
-    source_hashes, stacks, binaries = {}, {}, {}
+    source_hashes, stacks, binaries, compile_commands = {}, {}, {}, []
     for label in ("baseline", "current"):
         snapshot = Path(".build") / ("profile-" + label + "-src")
         (ROOT / snapshot).mkdir(parents=True, exist_ok=True)
         hashes = {}
-        for name in ("http.c", "http.h"):
+        for name in ("http.c", "http.h", "internal.h"):
             relative = "native/" + name
+            if name == "internal.h":
+                available = (subprocess.run(["git", "cat-file", "-e", baseline + ":" + relative],
+                    cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+                    if label == "baseline" else (ROOT / relative).is_file())
+                if not available:
+                    (ROOT / snapshot / name).unlink(missing_ok=True)
+                    continue
             data = (subprocess.check_output(["git", "show", baseline + ":" + relative], cwd=ROOT)
                     if label == "baseline" else (ROOT / relative).read_bytes())
             (ROOT / snapshot / name).write_bytes(data)
             hashes[relative] = digest(data)
         source_hashes[label] = hashes
         binary = str(Path(".build") / ("profile-" + label))
-        run(compiler + FLAGS + ["-I" + str(snapshot), '-DPROFILE_IMPLEMENTATION="http.c"',
-            "bench/profile.c"] + curl_flags + ["-Wl,--wrap=curl_easy_perform", "-o", binary])
+        command = compiler + FLAGS + ["-I" + str(snapshot), '-DPROFILE_IMPLEMENTATION="http.c"',
+            "bench/profile.c"] + curl_flags + ["-Wl,--wrap=curl_easy_perform", "-o", binary]
+        compile_commands.append(command)
+        run(command)
         binaries[label] = binary
         # Compile production separately: this frame report excludes the driver.
         obj = str(Path(".build") / ("profile-" + label + "-kernel.o"))
-        run(compiler + FLAGS + curl_cflags + ["-fstack-usage", "-c", str(snapshot / "http.c"), "-o", obj])
+        command = compiler + FLAGS + curl_cflags + ["-fstack-usage", "-c", str(snapshot / "http.c"), "-o", obj]
+        compile_commands.append(command)
+        run(command)
         stack_file = ROOT / Path(obj).with_suffix(".su")
-        frames = []
+        frames, engine_frames = [], []
         for line in stack_file.read_text().splitlines():
             fields = line.split("\t")
             if fields[0].rsplit(":", 1)[-1] == "gh_request":
                 frames.append({"bytes": int(fields[1]), "kind": fields[2]})
+            if fields[0].rsplit(":", 1)[-1].split(".", 1)[0] == "gh_request_engine":
+                engine_frames.append({"bytes": int(fields[1]), "kind": fields[2]})
         if not frames:
             raise RuntimeError("compiler stack report did not contain gh_request")
-        stacks[label] = {"gh_request_frames": frames, "max_gh_request_frame_bytes": max(f["bytes"] for f in frames)}
+        stacks[label] = {"gh_request_frames": frames, "max_gh_request_frame_bytes": max(f["bytes"] for f in frames),
+            "gh_request_engine_frames": engine_frames,
+            "max_gh_request_engine_frame_bytes": max((f["bytes"] for f in engine_frames), default=0),
+            "scope": "Individual compiler-reported frames, not complete call-chain stack peaks; inlining/tail calls vary."}
     result = {
         "schema": 1,
         "recorded_utc": datetime.now(timezone.utc).isoformat(),
@@ -112,6 +138,7 @@ def main():
         "source_sha256": source_hashes,
         "harness_sha256": {name: digest((ROOT / name).read_bytes()) for name in ("bench/profile.c", "bench/profile.py")},
         "compiler_command": normalized(args.cc),
+        "compiler_executable": compiler_identity, "compile_commands": compile_commands,
         "compiler": normalized(run(compiler + ["--version"])),
         "flags": FLAGS,
         "link_flags": ["-Wl,--wrap=curl_easy_perform"],
@@ -130,7 +157,7 @@ def main():
             "Each process performs 1000 excluded warmup iterations before internal wall/process-CPU clocks. Process startup and curl global initialization are excluded.",
             "Callback buffers are allocated and initialized before timing; setup output buffers are bounded 4096/1024 bytes and not prezeroed.",
             "Setup packed header formatting is included once per timed loop, not per request. Assertions and checksums are included; no Goose public preparation is measured.",
-            "The reported production gh_request frame excludes its callees, compiler/runtime stacks and the benchmark driver.",
+            "Individual gh_request and gh_request_engine frames exclude callees and are not complete call-chain stack peaks; inlining and tail calls vary.",
             "Samples alternate baseline/current order. Timing is observational, with no thresholds or network-throughput ranking.",
         ],
         "workloads": [],
@@ -153,11 +180,11 @@ def main():
         result["workloads"].append({"name": name, "request_header_count": headers,
             "blank_request_values": blank, "callback_bytes": body_bytes,
             "iterations_per_sample": iterations, "samples": samples, "summary": summary})
-    destination = Path(args.output)
-    if not destination.is_absolute():
-        destination = ROOT / destination
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(result, indent=2) + "\n")
+    if digest(Path(compiler_identity['path']).read_bytes()) != compiler_identity['sha256']:
+        raise RuntimeError('compiler changed during profiling; refusing report')
+    temporary = destination.with_suffix(destination.suffix + '.tmp')
+    temporary.write_text(json.dumps(result, indent=2) + "\n")
+    temporary.replace(destination)
     print("saved profile samples to " + normalized(str(destination)))
 
 

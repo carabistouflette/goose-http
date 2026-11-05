@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build the public client API fixture with a test-only CA link wrapper."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
 import shlex
+import re
 import shutil
 import subprocess
 
@@ -25,11 +27,22 @@ def main():
     compiler = shutil.which(args.cc)
     if not compiler:
         raise RuntimeError('C compiler not found')
-    folder = ROOT / '.build' / ('client-api-' + Path(compiler).name + ('-sanitize' if args.sanitize else '-release'))
-    folder.mkdir(parents=True, exist_ok=True)
+    compiler_name = Path(compiler).name
     compiler = str(Path(compiler).resolve())
+    goose = args.goose.resolve()
+    version = subprocess.check_output([goose, '--version'], text=True)
+    advertised = re.search(r'\bgoose ([0-9a-f]{7,40})\b', version)
+    if advertised is None or not (ROOT / 'GOOSE_REVISION').read_text().strip().startswith(advertised.group(1)):
+        raise RuntimeError('Goose compiler does not match GOOSE_REVISION')
     flags = ['-O1', '-g', '-fno-omit-frame-pointer', '-fsanitize=address,undefined', '-fno-sanitize-recover=all'] if args.sanitize else ['-O2']
     curl = shlex.split(subprocess.check_output(['pkg-config', '--cflags', 'libcurl'], text=True))
+    # Native-cache identity includes the compiler wrapper path. Invalidate it
+    # whenever wrapper/shim/tool bytes or injected flags change.
+    identity = hashlib.sha256(Path(__file__).read_bytes() + (ROOT / 'tests/client_transport.c').read_bytes()
+        + Path(compiler).read_bytes() + goose.read_bytes()
+        + repr((compiler, flags, curl)).encode()).hexdigest()[:20]
+    folder = ROOT / '.build' / ('client-api-' + compiler_name + ('-sanitize-' if args.sanitize else '-release-') + identity)
+    folder.mkdir(parents=True, exist_ok=True)
     command = [compiler, '-std=c11', '-Wall', '-Wextra', '-Werror', *flags, *curl,
                '-c', ROOT / 'tests/client_transport.c', '-o', folder / 'transport.o']
     run(command)
@@ -50,7 +63,7 @@ def main():
         'os.execv(compiler,command)\n')
     wrapper.chmod(0o755)
     binary = folder / 'api'
-    run([args.goose.resolve(), 'build', ROOT / 'tests/client_api.goose', '--standalone', '--cc', wrapper, '-o', binary], cwd=ROOT)
+    run([goose, 'build', ROOT / 'tests/client_api.goose', '--standalone', '--cc', wrapper, '-o', binary], cwd=ROOT)
     env = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:abort_on_error=1', UBSAN_OPTIONS='halt_on_error=1')
     run(['python3', ROOT / 'tests/clients.py', '--api', binary], cwd=ROOT, env=env)
 
