@@ -1,27 +1,14 @@
-# Recorded local sample
+# Historical one-shot request sample
 
-[Raw samples and provenance](results/2026-11-04.json) were recorded on
-2026-11-04 from clean source commit
-`92b50c924d2f450f77b7493e173c00b027f4fbf7`, using the compiler pin in
-`GOOSE_REVISION`, GCC 16.2.1, libcurl 8.23.0, and an Intel Core Ultra 7 258V
-on Linux x86-64. Only executable path names were normalized for publication;
-raw durations and compiler, system, flags, source and buffer metadata remain
-unchanged. This is one machine and one fixture, not a general performance claim.
+This sample was recorded on 2026-11-04 from clean source `92b50c924d2f450f77b7493e173c00b027f4fbf7` with Goose `eadca409f68210893f366e60d0c2f0dc29a339be`, GCC 16.2.1 and libcurl 8.23.0 on Linux 7.2.11 x86-64, Intel Core Ultra 7 258V. It is retained as a historical sample, not current performance evidence for main `f81d12197c26f48ab61562f056aba0a1a19f0ff6`.
 
-Each workload has five measured samples of 100 sequential requests after one
-excluded warm-up sample, with execution order alternating between workloads.
-Each request fetches 4096 bytes from the loopback Python server. The benchmark
-includes process startup, native handle creation and server/thread scheduling.
-It does not isolate adapter CPU cost, HTTPS, DNS, real networks or keep-alive.
+Each workload ran five measured batches of 100 sequential requests after one excluded warmup batch. The loopback Python server returned 4096 bytes per request. Process startup, native handle setup and fixture scheduling are included. No HTTPS, DNS or external network was measured.
 
-The private native-kernel workload has a median sample duration of 117.089 ms
-(100 requests), using fixed 4096-byte body/1024-byte header buffers without
-per-call zero-fill. The Goose public-defaults workload has a median sample
-duration of 165.770 ms (100 requests), including validation and the default
-1 MiB body/64 KiB header buffer preparation. The scopes differ; these are not
-competing implementations or evidence of a universal ranking. Raw samples show
-substantial scheduling variation, especially for the public workload.
+| Workload | Median per 100 requests | Sample range |
+| --- | ---: | ---: |
+| Native adapter with fixed 4 KiB body / 1 KiB header buffers | 117.089 ms | 115.384–120.591 ms |
+| Goose public API with default 1 MiB body / 64 KiB header buffers | 165.770 ms | 115.461–168.650 ms |
 
-Reproduce with `make bench BENCH_ITERATIONS=100`; see [the harness scope](README.md).
-Longer, application-specific profiles should guide any change to connection
-reuse, buffer limits or ownership. CI only checks that the harness executes.
+The workloads use different buffer contracts and are not competing implementations. The second workload varied widely; its raw five samples remain in [the report](results/2026-11-04.json). No ranking follows from this small run.
+
+Reproduce the historical workload with `make bench BENCH_ITERATIONS=100`. Current main's reusable-client measurements are in [REUSE_RESULTS.md](REUSE_RESULTS.md).
