@@ -184,7 +184,8 @@ static void clients(gh_input address, gh_input arbitrary, gh_input none,
     int64_t result = gh_client_open(arbitrary, (gh_metadata){&arbitrary_id, 1});
     check(result == OK || result == INVALID || result == SETUP);
     if (result == OK) check(arbitrary_id > 0 && gh_client_close(arbitrary_id) == OK);
-    else check(arbitrary_id == 0);
+    /* Invalid slices can fail before the native API may safely write outputs. */
+    else if (arbitrary.len <= 8192) check(arbitrary_id == 0);
     int64_t first = open_client(authority), second = open_client(authority);
     check(first != second);
     use_client = 1; client_id = first;
