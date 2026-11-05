@@ -1,25 +1,9 @@
 # Contributing
 
-Keep the API small, explicit and bounded. Goose owns validation and returned
-storage; a private libcurl adapter owns native handles. Opt-in client handles have
-explicit lifetimes and retain private connection caches. Preserve
-TLS verification and the documented ownership/limit/error contracts. No bespoke
-cryptography or HTTP parser. No speculative abstractions or automatic retries.
+Keep the API small, synchronous and bounded. Goose validates inputs and owns returned data; the native adapter uses system libcurl. Preserve TLS verification, explicit resource limits, ownership and error behavior. Do not add a custom TLS implementation, HTTP parser or automatic retry policy.
 
-Use focused branches and Conventional Commits with imperative subjects:
-`feat: add ...`, `fix: reject ...`, `test: cover ...`, `docs: clarify ...`,
-`chore: update ...`. Each commit contains one coherent change. No stable API or
-release promise before 1.0. Do not commit generated output or credentials.
+Use a focused branch and an imperative Conventional Commit subject, such as `fix: reject malformed headers` or `docs: clarify timeout behavior`. Keep each commit to one coherent change. Do not commit generated output, credentials or private planning.
 
-Behavior changes require meaningful public API regression tests, including
-malformed input and ownership. Run `make format`, `make check test`, and
-`git diff --check`. Native changes require `make sanitize SANITIZER_CC=gcc` and
-`make sanitize SANITIZER_CC=clang`, plus the bounded fuzz harness. Request
-independent correctness, security and performance reviews and fix findings.
-Keep CI passing. Report vulnerabilities privately through the process in
-[SECURITY.md](SECURITY.md). Compiler changes require a reviewed full upstream commit and
-complete validation. Never import private workspace notes into published code.
+For behavior changes, add regression tests for invalid input, bounds and ownership. Run `make format`, `make check test` and `git diff --check`. Native changes also need GCC and Clang sanitizer runs and bounded fuzzing. Request independent correctness and security review for code changes; fix concrete findings before merge.
 
-Profile before optimizing. Preserve validation. Benchmarks retain raw samples,
-compiler revision, hardware, flags and source revision. Timing is observational;
-CI checks execution, not noisy timing thresholds. Do not claim universal rankings.
+Keep benchmark evidence tied to exact source, compiler, flags, workload and raw samples. Do not turn shared-host measurements into universal rankings. Report vulnerabilities through [SECURITY.md](SECURITY.md).
