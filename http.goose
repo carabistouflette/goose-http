@@ -20,6 +20,8 @@ struct Status {
     transport_code: i64   = 0,
     status_code:    i64   = 0,
 }
+// Sequential, origin-bound reusable HTTPS GET client. Copies are aliases, not owners.
+struct ClientHandle { id: u64 = 0 }
 struct StreamOptions {
     headers:            const Header[:] = NO_HEADERS,
     timeout_ms:         i64             = 30000,
@@ -45,6 +47,12 @@ struct StreamHandle {
 extern fn native_request(url: const u8[:], method: i64, packed: const u8[:],
     upload: const u8[:], timeout_ms: i64, allow_http: i64,
     body: u8[:], headers: u8[:], meta: i64[:]) -> i64 = "gh_request";
+
+extern fn native_client_open(origin: const u8[:], meta: i64[:]) -> i64 = "gh_client_open";
+extern fn native_client_request(id: i64, url: const u8[:], method: i64, packed: const u8[:],
+    upload: const u8[:], timeout_ms: i64, allow_http: i64,
+    body: u8[:], headers: u8[:], meta: i64[:]) -> i64 = "gh_client_request";
+extern fn native_client_close(id: i64) -> i64 = "gh_client_close";
 
 extern fn native_stream_open(url: const u8[:], packed: const u8[:], timeout_ms: i64,
     connect_timeout_ms: i64, chunk_limit: i64, body_limit: i64, header_limit: i64,
@@ -97,6 +105,33 @@ fn valid_header(header: Header) -> bool {
 
 // Inputs cannot borrow either output; the compiler checks lifetime separation.
 fn request(url: const u8[:], options: const Options&, body: u8[>..]&, headers: u8[>..]&) -> Status {
+    return buffered_request(0, url, options, body, headers);
+}
+
+fn open_client(origin: const u8[:], client: ClientHandle&) -> Status {
+    if client.id != 0 || origin.len == 0 || origin.len > 8192 { return Status { error: Error.InvalidInput }; }
+    var meta: i64[1] = [0];
+    let code = native_client_open(origin, meta[..]);
+    if code == 0 { client.id = meta[0] as u64; }
+    return Status { error: to_error(code) };
+}
+
+fn request(client: ClientHandle&, url: const u8[:], options: const Options&, body: u8[>..]&, headers: u8[>..]&) -> Status {
+    if client.id == 0 || options.method != Method.Get {
+        body.clear(); headers.clear();
+        return Status { error: Error.InvalidInput };
+    }
+    return buffered_request(client.id, url, options, body, headers);
+}
+
+fn close_client(client: ClientHandle&) -> Status {
+    let code = native_client_close(client.id as i64);
+    // A concurrent/busy close is rejected without consuming the live token.
+    if code == 0 { client.id = 0; }
+    return Status { error: to_error(code) };
+}
+
+fn buffered_request(client_id: u64, url: const u8[:], options: const Options&, body: u8[>..]&, headers: u8[>..]&) -> Status {
     body.clear(); headers.clear();
     let invalid = Status { error: Error.InvalidInput };
     if body .== headers { return invalid; }
@@ -121,8 +156,13 @@ fn request(url: const u8[:], options: const Options&, body: u8[>..]&, headers: u
     }
     body.resize(options.body_limit, 0); headers.resize(options.header_limit, 0);
     var meta: i64[4] = [0, 0, 0, 0];
-    let code = native_request(url, if options.method == Method.Get { 0 } else { 1 }, packed,
-        options.body, options.timeout_ms, if options.allow_http { 1 } else { 0 }, body[..], headers[..], meta[..]);
+    let code = if client_id == 0 {
+        native_request(url, if options.method == Method.Get { 0 } else { 1 }, packed,
+            options.body, options.timeout_ms, if options.allow_http { 1 } else { 0 }, body[..], headers[..], meta[..])
+    } else {
+        native_client_request(client_id as i64, url, if options.method == Method.Get { 0 } else { 1 }, packed,
+            options.body, options.timeout_ms, if options.allow_http { 1 } else { 0 }, body[..], headers[..], meta[..])
+    };
     body.resize(meta[2]); headers.resize(meta[3]);
     let error = to_error(code);
     return Status { error: error, transport_code: meta[0], status_code: meta[1] };

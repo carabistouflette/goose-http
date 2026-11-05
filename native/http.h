@@ -12,6 +12,16 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed_headers,
                    gh_input upload, int64_t timeout_ms, int64_t allow_http,
                    gh_output body, gh_output headers, gh_metadata meta);
 
+#ifndef GH_MAX_CLIENTS
+#define GH_MAX_CLIENTS 32
+#endif
+/* Reusable, origin-bound GET clients. No borrowed input survives a call. */
+int64_t gh_client_open(gh_input origin, gh_metadata meta);
+int64_t gh_client_request(int64_t id, gh_input url, int64_t method,
+    gh_input packed, gh_input upload, int64_t timeout_ms, int64_t allow_http,
+    gh_output body, gh_output headers, gh_metadata meta);
+int64_t gh_client_close(int64_t id);
+
 #ifndef GH_MAX_STREAMS
 #define GH_MAX_STREAMS 32
 #endif

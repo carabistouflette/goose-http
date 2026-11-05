@@ -11,9 +11,11 @@ jobs:
       - name: Install native dependencies
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build python3 pkg-config libcurl4-openssl-dev openssl clang python3-h2
       - run: make setup
-      - run: make check test http2 metadata-test
-      - run: make sanitize http2-sanitize metadata-sanitize SANITIZER_CC=gcc
-      - run: make sanitize http2-sanitize metadata-sanitize SANITIZER_CC=clang
+      - run: mkdir -p .build
+      - run: make check test http2 metadata-test CC=gcc 2>&1 | tee .build/client-gcc-release-transcript.log
+      - run: make clients CC=clang 2>&1 | tee .build/client-clang-release-transcript.log
+      - run: make sanitize http2-sanitize metadata-sanitize SANITIZER_CC=gcc 2>&1 | tee .build/client-gcc-sanitize-transcript.log
+      - run: make sanitize http2-sanitize metadata-sanitize SANITIZER_CC=clang 2>&1 | tee .build/client-clang-sanitize-transcript.log
       - run: make fuzz FUZZ_RUNS=10000
       - run: make metadata-fuzz
       - run: make metadata-fuzz-sanitize SANITIZER_CC=gcc
@@ -22,6 +24,7 @@ jobs:
       - run: make bench BENCH_ITERATIONS=10
       - run: make profile PROFILE_BASELINE=HEAD PROFILE_ITERATIONS=100 PROFILE_SAMPLES=1
       - run: make metadata-bench METADATA_REQUESTS=2 METADATA_ITERATIONS=100 METADATA_SAMPLES=1
+      - run: make reuse-bench CC=gcc REUSE_REQUESTS=5 REUSE_SAMPLES=2
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -34,5 +37,9 @@ jobs:
             .build/metadata-fuzz-corpus.bin
             .build/metadata-fuzz-failure.bin
             .build/metadata-fuzz-crash.bin
+            .build/reuse-results-*.json
+            .build/client-native-*.json
+            .build/client-api-*/compiler-commands.jsonl
+            .build/client-*-transcript.log
           include-hidden-files: true
           if-no-files-found: error
