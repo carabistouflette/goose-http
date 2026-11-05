@@ -5,7 +5,8 @@ Usage: python3 bench/reuse-measure.py [--cc gcc|clang] [--requests 30]
        python3 bench/reuse-measure.py --cc clang --sanitize
 
 Matrix: bodies 0 and 4096 bytes; native gh_request cold, matched direct libcurl
-cold, and private easy_reset reuse; seven rotated samples of thirty requests.
+cold, private easy_reset reuse, and the native reusable GET client; seven
+rotated samples of thirty requests.
 The first connection is included in every batch. Separate warmup batches are
 excluded. Each release invocation first runs ASan/UBSan correctness batches.
 --sanitize runs correctness only and emits no transfer or batch timings.
@@ -16,11 +17,16 @@ URL/path, identity request header, timeout, bounded body/header callbacks, peer
 and hostname verification, no redirect/proxy/netrc/credentials/cookies, and an
 observed HTTP/1.1 response. The retained easy handle is reset and fully configured
 for every request; only libcurl's connection/TLS/DNS caches survive. This is an
-upper-bound prototype for connection reuse, not an implementation proposal.
+upper-bound prototype for connection reuse. The native_client mode measures the
+actual origin-bound gh_client_open/request/close API, including its production
+validation, HTTP/1.1 selection and one-entry connection-cache bound. Direct
+adapters retain native one-shot libcurl HTTP-version defaults; server ALPN and
+the response oracle require observed HTTP/1.1 for every mode.
 
 Batch monotonic time includes setup, transfer, cleanup, guards and response
 validation. Per-transfer time includes request setup/transfer/cleanup (the reused
-handle is finally destroyed at batch end). No performance threshold is enforced.
+handle/client is finally destroyed at batch end; client open is included in its
+first transfer). No performance threshold is enforced.
 This is a nonexclusive host; raw samples and counters are retained for review.
 """
 # SPDX-License-Identifier: Apache-2.0
@@ -43,11 +49,13 @@ import tempfile
 import threading
 
 ROOT = Path(__file__).resolve().parent.parent
-MODES = ("native_cold", "direct_cold", "direct_reuse")
+MODES = ("native_cold", "direct_cold", "direct_reuse", "native_client")
+REUSED_MODES = ("direct_reuse", "native_client")
 BODIES = (0, 4096)
 PAYLOADS = {count: bytes((index * 131 + 17) % 256 for index in range(count)) for count in BODIES}
 BASE_FLAGS = ["-std=c11", "-Wall", "-Wextra", "-Werror", "-pthread"]
-SOURCES = ("bench/reuse.c", "bench/reuse-measure.py", "native/http.c", "native/http.h")
+SOURCES = ("bench/reuse.c", "bench/reuse-measure.py", "native/http.c", "native/http.h",
+           "native/client.c", "native/internal.h")
 
 
 def require(condition, detail="benchmark validation failed"):
@@ -238,7 +246,7 @@ def main():
                               "-fsanitize=address,undefined", "-no-pie"] if sanitized
                  else BASE_FLAGS + ["-O2"])
         binary = build / f"reuse-{label}-{variant}"
-        command = compiler + flags + ["bench/reuse.c", "native/http.c"] + curl_flags + [
+        command = compiler + flags + ["bench/reuse.c", "native/http.c", "native/client.c"] + curl_flags + [
             "-Wl,--wrap=curl_easy_perform", "-o", str(binary)]
         compile_commands.append(command)
         run(command)
@@ -267,7 +275,7 @@ def main():
                        str(requests), str(body), "1" if phase == "measurement" else "0", str(port)]
             data = json.loads(run(command, timeout=min(300, requests * 3 + 10), env=env))
             after = fixture.snapshot()
-            expected_connections = 1 if mode == "direct_reuse" else requests
+            expected_connections = 1 if mode in REUSED_MODES else requests
             delta = {key: after[key] - before[key] for key in ("accepted_tcp", "requests")}
             require(delta == {"accepted_tcp": expected_connections, "requests": requests}, (mode, delta))
             require(not after["errors"], after["errors"])
@@ -276,7 +284,7 @@ def main():
             require(len(data["transfers"]) == requests)
             require(sum(item["new_connections"] for item in data["transfers"]) == expected_connections)
             for index, transfer in enumerate(data["transfers"]):
-                require(transfer["new_connections"] == (1 if mode != "direct_reuse" or index == 0 else 0))
+                require(transfer["new_connections"] == (1 if mode not in REUSED_MODES or index == 0 else 0))
                 require(transfer["http_status"] == 200 and transfer["http_version"] == "1.1")
                 require(transfer["ssl_verify_result"] == 0)
             data.update(phase=phase, sample=sample, fixture_delta=delta, fixture_before=before,
@@ -293,8 +301,9 @@ def main():
                     for mode in MODES:
                         batch(binary, mode, body, args.warmup_requests, "warmup")
                 for sample in range(args.samples):
-                    # Rotate three modes and body order to spread order/host drift.
-                    modes = MODES[sample % 3:] + MODES[:sample % 3]
+                    # Rotate modes and body order to spread order/host drift.
+                    offset = sample % len(MODES)
+                    modes = MODES[offset:] + MODES[:offset]
                     for body in BODIES[::1 if sample % 2 == 0 else -1]:
                         for mode in modes:
                             batch(binary, mode, body, args.requests, "measurement", sample)
@@ -319,6 +328,9 @@ def main():
             row["paired_direct_cold_over_reuse"] = [cold / warm for cold, warm in
                                                     zip(groups["direct_cold"], groups["direct_reuse"])]
             row["median_paired_direct_speedup"] = statistics.median(row["paired_direct_cold_over_reuse"])
+            row["paired_native_cold_over_client"] = [cold / warm for cold, warm in
+                                                     zip(groups["native_cold"], groups["native_client"])]
+            row["median_paired_native_speedup"] = statistics.median(row["paired_native_cold_over_client"])
             summaries.append(row)
     report = {
         "schema": 1, "started_utc": started, "finished_utc": utc_now(), "mode": kind,
@@ -343,7 +355,9 @@ def main():
         values = row["median_batch_ns_per_request"]
         print(f"{row['body_bytes']} bytes: native cold {values['native_cold']/1000:.1f} us/request; "
               f"direct cold {values['direct_cold']/1000:.1f}; reuse {values['direct_reuse']/1000:.1f}; "
-              f"median paired speedup {row['median_paired_direct_speedup']:.2f}x")
+              f"native client {values['native_client']/1000:.1f}; "
+              f"paired direct/native speedups {row['median_paired_direct_speedup']:.2f}x/"
+              f"{row['median_paired_native_speedup']:.2f}x")
     print(f"fixture verified {final_counts['requests']} requests on {final_counts['accepted_tcp']} accepted TCP connections")
 
 

@@ -32,7 +32,7 @@ static int64_t now_ns(void) {
     return (int64_t)ts.tv_sec * INT64_C(1000000000) + ts.tv_nsec;
 }
 
-/* Only production gh_request needs this test-link trust injection. Direct
+/* Only production native entrypoints need this test-link trust injection. Direct
  * adapters configure the identical CA explicitly, before calling perform. */
 CURLcode __wrap_curl_easy_perform(CURL *handle) {
     char *url = NULL;
@@ -114,8 +114,9 @@ static void json_string(const char *s) {
 
 int main(int argc, char **argv) {
     CHECK(argc == 8);
-    native_mode = !strcmp(argv[1], "native_cold");
-    bool reuse = !strcmp(argv[1], "direct_reuse");
+    bool native_client = !strcmp(argv[1], "native_client");
+    native_mode = native_client || !strcmp(argv[1], "native_cold");
+    bool reuse = native_client || !strcmp(argv[1], "direct_reuse");
     CHECK(native_mode || reuse || !strcmp(argv[1], "direct_cold"));
     fixture_url = argv[2]; fixture_ca = argv[3];
     long requests = number(argv[4], 10000), bytes = number(argv[5], BODY_CAP);
@@ -136,6 +137,9 @@ int main(int argc, char **argv) {
     int header_len = snprintf(expected_headers, sizeof expected_headers,
         "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\nContent-Type: application/octet-stream\r\nX-Reuse-Fixture: 1\r\n\r\n", bytes);
     CHECK(header_len > 0 && header_len < HEADER_CAP);
+    char origin[128];
+    CHECK(snprintf(origin, sizeof origin, "https://localhost:%ld", port) > 0);
+    int64_t client_id = 0;
     CURL *retained = NULL;
     int64_t batch_start = measure ? now_ns() : 0;
     for (long i = 0; i < requests; ++i) {
@@ -148,10 +152,22 @@ int main(int argc, char **argv) {
         if (native_mode) {
             static const unsigned char packed[] = "Accept-Encoding: identity\0";
             int64_t meta[4] = {0};
-            CHECK(gh_request((gh_input){(const uint8_t *)fixture_url, (int64_t)strlen(fixture_url)},
-                0, (gh_input){packed, sizeof packed - 1}, (gh_input){NULL, 0}, TIMEOUT_MS, 0,
-                (gh_output){body_bytes, bytes}, (gh_output){header_bytes, HEADER_CAP},
-                (gh_metadata){meta, 4}) == 0);
+            if (native_client && i == 0) {
+                CHECK(gh_client_open((gh_input){(const uint8_t *)origin, (int64_t)strlen(origin)},
+                    (gh_metadata){&client_id, 1}) == 0);
+                CHECK(client_id > 0);
+            }
+            gh_input url = {(const uint8_t *)fixture_url, (int64_t)strlen(fixture_url)};
+            gh_input request_headers = {packed, sizeof packed - 1};
+            gh_input no_upload = {NULL, 0};
+            gh_output body_out = {body_bytes, bytes}, header_out = {header_bytes, HEADER_CAP};
+            gh_metadata result_meta = {meta, 4};
+            int64_t result = native_client ?
+                gh_client_request(client_id, url, 0, request_headers, no_upload, TIMEOUT_MS, 0,
+                                  body_out, header_out, result_meta) :
+                gh_request(url, 0, request_headers, no_upload, TIMEOUT_MS, 0,
+                           body_out, header_out, result_meta);
+            CHECK(result == 0);
             CHECK(meta[0] == CURLE_OK && meta[1] == 200 && meta[2] == bytes && meta[3] == header_len);
             body.used = (size_t)meta[2]; head.used = (size_t)meta[3];
         } else {
@@ -182,6 +198,7 @@ int main(int argc, char **argv) {
         CHECK(body_bytes[bytes] == 0xa5 && header_bytes[HEADER_CAP] == 0xa5);
         samples[i] = observed;
     }
+    if (client_id) CHECK(gh_client_close(client_id) == 0);
     if (retained) curl_easy_cleanup(retained);
     int64_t batch_ns = measure ? now_ns() - batch_start : 0;
     const curl_version_info_data *version = curl_version_info(CURLVERSION_NOW);
