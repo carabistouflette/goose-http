@@ -14,15 +14,18 @@ METADATA_COVERAGE_RUNS ?= 10000
 RUNTIME_WRAPS = -Wl,--wrap=curl_global_init -Wl,--wrap=curl_version_info -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_getinfo
 DNS_WRAPS = -Wl,--wrap=curl_easy_perform -Wl,--wrap=curl_easy_cleanup
 BENCH_ITERATIONS ?= 100
+REUSE_REQUESTS ?= 30
+REUSE_SAMPLES ?= 7
 PROFILE_BASELINE ?= 9a8bed6
 PROFILE_ITERATIONS ?= 20000
 PROFILE_SAMPLES ?= 5
 CFLAGS = -std=c11 -Wall -Wextra -Werror
 CURL_FLAGS = $(shell pkg-config --cflags --libs libcurl)
 FAIL_WRAPS = -Wl,--wrap=curl_easy_getinfo -Wl,--wrap=malloc -Wl,--wrap=curl_easy_init -Wl,--wrap=curl_url -Wl,--wrap=curl_url_set -Wl,--wrap=curl_url_get -Wl,--wrap=curl_slist_append -Wl,--wrap=curl_easy_setopt -Wl,--wrap=curl_easy_perform
-NATIVE_SOURCES = native/http.c native/stream.c
+CLIENT_FAIL_WRAPS = $(FAIL_WRAPS) -Wl,--wrap=curl_easy_reset -Wl,--wrap=curl_easy_cleanup -Wl,--wrap=curl_slist_free_all
+NATIVE_SOURCES = native/http.c native/stream.c native/client.c
 .NOTPARALLEL:
-.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize metadata-build metadata-test metadata-sanitize metadata-bench metadata-fuzz metadata-fuzz-sanitize metadata-coverage-fuzz
+.PHONY: setup format check test native sanitize fuzz bench profile http2 http2-sanitize metadata-build metadata-test metadata-sanitize metadata-bench metadata-fuzz metadata-fuzz-sanitize metadata-coverage-fuzz clients clients-sanitize reuse-bench reuse-sanitize
 setup:
 	./scripts/setup-goose.sh
 format:
@@ -39,6 +42,8 @@ check:
 	"$(GOOSE)" check tests/metadata_coverage.goose
 	"$(GOOSE)" check bench/metadata.goose
 	"$(GOOSE)" check bench/bench.goose
+	"$(GOOSE)" check tests/client_api.goose
+	"$(GOOSE)" check examples/client.goose
 	python3 -m py_compile scripts/*.py tests/*.py bench/*.py
 test:
 	mkdir -p .build
@@ -50,6 +55,7 @@ test:
 	python3 tests/integration.py .build/api-debug
 	python3 tests/ownership.py "$(abspath $(GOOSE))"
 	$(MAKE) native
+	$(MAKE) clients
 native:
 	mkdir -p .build
 	$(CC) $(CFLAGS) -O2 -pthread tests/native.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/native
@@ -82,6 +88,33 @@ sanitize:
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/stream_retire-sanitize
 	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/clock_failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=clock_gettime -o .build/clock_failures-sanitize
 	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/clock_failures-sanitize
+	$(MAKE) clients-sanitize
+
+clients:
+	mkdir -p .build
+	$(CC) $(CFLAGS) -O2 -pthread tests/clients.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/clients-$(notdir $(CC))
+	python3 tests/clients.py .build/clients-$(notdir $(CC)) > .build/client-native-$(notdir $(CC))-release.json
+	$(CC) $(CFLAGS) -O2 -pthread -DGH_MAX_GENERATION=3 tests/client_retire.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/client-retire-$(notdir $(CC))
+	./.build/client-retire-$(notdir $(CC))
+	$(CC) $(CFLAGS) -O2 -pthread tests/client_failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(CLIENT_FAIL_WRAPS) -o .build/client-failures-$(notdir $(CC))
+	./.build/client-failures-$(notdir $(CC))
+	python3 scripts/client-test-build.py --goose "$(abspath $(GOOSE))" --cc "$(CC)"
+
+clients-sanitize:
+	mkdir -p .build
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/clients.c $(NATIVE_SOURCES) $(CURL_FLAGS) -Wl,--wrap=curl_easy_perform -o .build/clients-$(notdir $(SANITIZER_CC))-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 tests/clients.py .build/clients-$(notdir $(SANITIZER_CC))-sanitize > .build/client-native-$(notdir $(SANITIZER_CC))-sanitize.json
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread -DGH_MAX_GENERATION=3 tests/client_retire.c $(NATIVE_SOURCES) $(CURL_FLAGS) -o .build/client-retire-$(notdir $(SANITIZER_CC))-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/client-retire-$(notdir $(SANITIZER_CC))-sanitize
+	$(SANITIZER_CC) $(CFLAGS) -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread tests/client_failures.c $(NATIVE_SOURCES) $(CURL_FLAGS) $(CLIENT_FAIL_WRAPS) -o .build/client-failures-$(notdir $(SANITIZER_CC))-sanitize
+	ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 ./.build/client-failures-$(notdir $(SANITIZER_CC))-sanitize
+	python3 scripts/client-test-build.py --goose "$(abspath $(GOOSE))" --cc "$(SANITIZER_CC)" --sanitize
+
+reuse-bench:
+	python3 bench/reuse-measure.py --cc "$(CC)" --requests $(REUSE_REQUESTS) --samples $(REUSE_SAMPLES)
+reuse-sanitize:
+	python3 bench/reuse-measure.py --cc "$(SANITIZER_CC)" --requests $(REUSE_REQUESTS) --samples $(REUSE_SAMPLES) --sanitize
+
 fuzz:
 	mkdir -p .build/fuzz-corpus
 	python3 scripts/fuzz-seeds.py

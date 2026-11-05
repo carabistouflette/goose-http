@@ -47,7 +47,7 @@ when libcurl returns success at EOF before that section terminates.
 TLS certificate/hostname verification stays enabled. No insecure switch. Default
 system trust store; no custom CA option in v1. No automatic redirects (return 3xx
 and Location for caller policy). No environment proxy, netrc, cookies, HTTP auth
-negotiation or connection reuse across calls. Explicit Authorization is supported
+negotiation. One-shot requests do not reuse connections across calls. Explicit Authorization is supported
 but never forwarded to another origin automatically. No library output/logging.
 This is a network client, not an SSRF boundary: applications must authorize URLs,
 hostnames and resolved addresses when input is untrusted. Local/private addresses
@@ -55,8 +55,12 @@ are permitted. Caller may intentionally re-request a redirect under its policy.
 
 Native adapter uses libcurl, a once-only process-lifetime global initialization,
 per-call easy handle and direct copies into prebounded Goose-owned buffers.
-No native pointers escape. Buffers do not grow during native calls. No retries,
-async API, pooling, or connection reuse across calls. In addition to buffered `request`,
+No native pointers escape. Buffers do not grow during native calls. There is no
+application-level retry loop or async API. An opt-in, origin-bound
+[reusable HTTPS GET client](CLIENT.md) provides `open_client(origin, client)`,
+`request(client, url, options, body, headers)` and `close_client(client)`.
+Its HTTP/1.1 connection reuse, GET replay caveat, context isolation and ownership
+contract are documented separately. In addition to buffered `request`,
 a pull-based streaming transfer API (`open_stream`, `read_chunk`, `close_stream`) provides
 bounded chunk delivery directly to caller-owned buffers.
 

@@ -17,6 +17,8 @@ static unsigned char payload[256];
 static size_t body_capacity, header_capacity, sent_body, sent_headers;
 static unsigned mode, selector, performed;
 static int expected;
+static int use_client;
+static int64_t client_id;
 static void check(int condition) { if (!condition) abort(); }
 
 CURLcode __real_curl_easy_setopt(CURL *handle, CURLoption option, ...);
@@ -142,10 +144,17 @@ static void run(gh_input url, gh_input headers, gh_input upload, int64_t method,
     body_callback = header_callback = NULL; body_data = header_data = NULL;
     body_capacity = body_limit; header_capacity = header_limit;
     sent_body = sent_headers = performed = 0; mode = scenario; expected = want;
-    int64_t result = gh_request(url, method, headers, upload, timeout, allow_http,
-        (gh_output){body + 1, (int64_t)body_limit},
-        (gh_output){head + 1, (int64_t)header_limit}, (gh_metadata){meta, 4});
-    if (scenario == VALIDATION) check(result == INVALID || result == SETUP || result == TRANSPORT);
+    gh_output body_out = {body + 1, (int64_t)body_limit};
+    gh_output header_out = {head + 1, (int64_t)header_limit};
+    int64_t result = use_client ?
+        gh_client_request(client_id, url, method, headers, upload, timeout, allow_http,
+                          body_out, header_out, (gh_metadata){meta, 4}) :
+        gh_request(url, method, headers, upload, timeout, allow_http,
+                   body_out, header_out, (gh_metadata){meta, 4});
+    if (scenario == VALIDATION) {
+        check(result == INVALID || result == SETUP || result == TRANSPORT);
+        if (want == INVALID) check(result == INVALID && !performed);
+    }
     else check(performed == 1 && result == expected);
     if (result == OK) {
         check(meta[0] == CURLE_OK && meta[1] == 200);
@@ -161,6 +170,59 @@ static void run(gh_input url, gh_input headers, gh_input upload, int64_t method,
     for (size_t i = header_limit + 1; i < sizeof head; ++i) check(head[i] == 0xa5);
     if (scenario == VALIDATION)
         for (size_t i = 0; i < sizeof body; ++i) check(body[i] == 0xa5 && head[i] == 0xa5);
+}
+static int64_t open_client(gh_input origin) {
+    int64_t id = -1;
+    check(gh_client_open(origin, (gh_metadata){&id, 1}) == OK && id > 0);
+    return id;
+}
+static void clients(gh_input address, gh_input arbitrary, gh_input none,
+                    size_t exact_headers) {
+    static const char origin[] = "https://example.invalid";
+    gh_input authority = {(const uint8_t *)origin, sizeof origin - 1};
+    int64_t arbitrary_id = -1;
+    int64_t result = gh_client_open(arbitrary, (gh_metadata){&arbitrary_id, 1});
+    check(result == OK || result == INVALID || result == SETUP);
+    if (result == OK) check(arbitrary_id > 0 && gh_client_close(arbitrary_id) == OK);
+    else check(arbitrary_id == 0);
+    int64_t first = open_client(authority), second = open_client(authority);
+    check(first != second);
+    use_client = 1; client_id = first;
+    run(arbitrary, none, none, 0, 100, 0, selector, selector, VALIDATION, TRANSPORT);
+    run(address, arbitrary, none, 0, 100, 0, selector, selector, VALIDATION, TRANSPORT);
+    run(address, none, arbitrary, 1, 100, 0, selector, selector, VALIDATION, INVALID);
+    run(address, none, none, 1, 100, 0, selector, selector, VALIDATION, INVALID);
+    run(address, none, none, 0, 100, 0, selector, 64, COMPLETE, OK);
+    run(address, none, none, 0, 100, 0, selector, 64, COMPLETE, OK);
+    run(address, none, none, 0, 100, 0, selector, 64, EXACT_BODY, OK);
+    run(address, none, none, 0, 100, 0, selector, 64, OVER_BODY, BODY);
+    run(address, none, none, 0, 100, 0, selector, exact_headers, EXACT_HEADERS, OK);
+    run(address, none, none, 0, 100, 0, selector, exact_headers, OVER_HEADERS, HEADERS);
+    run(address, none, none, 0, 100, 0, selector, 0, ZERO_HEADERS, HEADERS);
+    run(address, none, none, 0, 100, 0, selector, 64, BODY_OVERFLOW, BODY);
+    run(address, none, none, 0, 100, 0, selector, 64, HEADER_OVERFLOW, HEADERS);
+    run(address, none, none, 0, 100, 0, selector, 64, PARTIAL, TRANSPORT);
+    /* Interleave a bounded input-selected sequence on two independent clients. */
+    for (unsigned i = 0; i <= selector % 4; ++i) {
+        client_id = i & 1 ? first : second;
+        run(address, none, none, 0, 100, 0, selector, 64, FRAGMENTS, OK);
+    }
+    check(gh_client_close(first) == OK);
+    client_id = first;
+    run(address, none, none, 0, 100, 0, selector, 64, VALIDATION, INVALID);
+    check(gh_client_close(first) == INVALID);
+    int64_t replacement = open_client(authority);
+    check(replacement != first && replacement != second);
+    run(address, none, none, 0, 100, 0, selector, 64, VALIDATION, INVALID);
+    client_id = selector & 1 ? 0 : -1;
+    run(address, none, none, 0, 100, 0, selector, 64, VALIDATION, INVALID);
+    client_id = second;
+    run(address, none, none, 0, 100, 0, selector, 64, COMPLETE, OK);
+    client_id = replacement;
+    run(address, none, none, 0, 100, 0, selector, 64, COMPLETE, OK);
+    check(gh_client_close(second) == OK && gh_client_close(replacement) == OK);
+    check(gh_client_close(0) == OK);
+    use_client = 0; client_id = 0;
 }
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     if (size > 65536) return 0;
@@ -185,5 +247,6 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     run(address, none, none, 0, 100, 0, selector, 64, BODY_OVERFLOW, BODY);
     run(address, none, none, 0, 100, 0, selector, 64, HEADER_OVERFLOW, HEADERS);
     run(address, none, none, 0, 100, 0, selector, 64, FRAGMENTS, OK);
+    clients(address, arbitrary, none, exact_headers);
     return 0;
 }

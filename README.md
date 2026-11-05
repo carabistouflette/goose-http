@@ -56,12 +56,18 @@ Goose setup needs CMake 3.27+ and a C++20 compiler. Native dependencies apply to
 both `goose run` and building executables. Use a maintained system libcurl/TLS
 package: the library does not vendor TLS or implement cryptography.
 
-No automatic redirects, retries, environment proxies, netrc, cookie store, or
-connection pooling. Response bodies may be fetched as a single bounded buffer via
+No application-level retry loop, automatic redirects, environment proxies,
+netrc or cookie store. Response bodies may be fetched as a single bounded buffer via
 `request` or consumed incrementally using the pull-based streaming transfer client.
 URLs from untrusted input need application authorization; private network access is
 permitted. Choose body/header limits for the expected payload: the public API initializes
 those capacities before receiving data, so smaller limits reduce preparation work.
+
+For repeated buffered HTTPS GETs, the optional [origin-bound client](docs/CLIENT.md)
+reuses a private HTTP/1.1 connection/cache with explicit open/close. It requires
+one sequential owner and one authentication context. libcurl may reconnect/replay
+a GET after a stale reused connection; POST remains on the one-shot API. Existing
+one-shot and streaming calls keep independent handles.
 
 `timeout_ms` bounds libcurl's transfer work, but **not total call wall time**:
 threaded DNS resolver cleanup can wait for a slow system resolver after timeout.

@@ -1,7 +1,8 @@
 # Contributing
 
 Keep the API small, explicit and bounded. Goose owns validation and returned
-storage; a private libcurl adapter owns short-lived native handles. Preserve
+storage; a private libcurl adapter owns native handles. Opt-in client handles have
+explicit lifetimes and retain private connection caches. Preserve
 TLS verification and the documented ownership/limit/error contracts. No bespoke
 cryptography or HTTP parser. No speculative abstractions or automatic retries.
 

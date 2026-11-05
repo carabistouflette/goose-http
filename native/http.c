@@ -1,16 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#include "http.h"
-#include <curl/curl.h>
-#include <pthread.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
+#include "internal.h"
 
 #if LIBCURL_VERSION_NUM < 0x075500
 #error "goose-http requires libcurl >= 7.85.0"
 #endif
-
-enum { GH_OK, GH_INVALID, GH_SETUP, GH_TRANSPORT, GH_TIMEOUT, GH_BODY, GH_HEADERS };
 
 static pthread_once_t initialized = PTHREAD_ONCE_INIT;
 static CURLcode init_code = CURLE_FAILED_INIT;
@@ -96,7 +89,77 @@ static size_t receive_header(char *data, size_t size, size_t count, void *opaque
     return n;
 }
 
-int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input upload,
+static int64_t transport_ready(void) {
+    if (gh_ensure_initialized() != 0) return GH_SETUP;
+    const curl_version_info_data *version = curl_version_info(CURLVERSION_NOW);
+    if (version->version_num < 0x075500 || !(version->features & CURL_VERSION_SSL) ||
+        !(version->features & CURL_VERSION_ASYNCHDNS) || !(version->features & CURL_VERSION_THREADSAFE))
+        return GH_SETUP;
+    return GH_OK;
+}
+
+/* CURLUPART_HOST excludes zone IDs; reject scoped-interface URLs for clients. */
+static int64_t client_port(CURLU *parsed, int64_t *port) {
+    char *text = NULL;
+    CURLUcode code = curl_url_get(parsed, CURLUPART_ZONEID, &text, 0);
+    curl_free(text);
+    if (code == CURLUE_OUT_OF_MEMORY) return GH_SETUP;
+    if (code != CURLUE_NO_ZONEID) return GH_INVALID;
+    text = NULL;
+    code = curl_url_get(parsed, CURLUPART_PORT, &text, CURLU_DEFAULT_PORT);
+    if (code != CURLUE_OK) { curl_free(text); return code == CURLUE_OUT_OF_MEMORY ? GH_SETUP : GH_INVALID; }
+    int64_t value = 0;
+    bool valid = text && *text;
+    if (valid) for (const char *p = text; *p; ++p) {
+        if (*p < '0' || *p > '9') { valid = false; break; }
+        value = value * 10 + *p - '0';
+        if (value > 65535) { valid = false; break; }
+    }
+    curl_free(text);
+    if (!valid || value < 1) return GH_INVALID;
+    *port = value;
+    return GH_OK;
+}
+
+static bool same_host(const char *left, const char *right) {
+    for (; *left && *right; ++left, ++right) {
+        unsigned char a = (unsigned char)*left, b = (unsigned char)*right;
+        if (a >= 'A' && a <= 'Z') a += 'a' - 'A';
+        if (b >= 'A' && b <= 'Z') b += 'a' - 'A';
+        if (a != b) return false;
+    }
+    return *left == *right;
+}
+
+int64_t gh_parse_client_origin(gh_input origin, char **host, int64_t *port) {
+    *host = NULL;
+    *port = 0;
+    if (!gh_valid_slice(origin.data, origin.len, 8192) || origin.len <= 8 ||
+        memcmp(origin.data, "https://", 8)) return GH_INVALID;
+    for (int64_t i = 0; i < origin.len; ++i) {
+        uint8_t c = origin.data[i];
+        if (c <= 32 || c >= 127 || c == '?' || c == '#' ||
+            (i >= 8 && c == '/' && i != origin.len - 1)) return GH_INVALID;
+    }
+    int64_t ready = transport_ready();
+    if (ready != GH_OK) return ready;
+    char address[8193];
+    memcpy(address, origin.data, (size_t)origin.len); address[origin.len] = 0;
+    CURLU *parsed = curl_url();
+    if (!parsed) return GH_SETUP;
+    CURLUcode code = curl_url_set(parsed, CURLUPART_URL, address, CURLU_DISALLOW_USER);
+    if (code == CURLUE_OK) code = curl_url_get(parsed, CURLUPART_HOST, host, 0);
+    int64_t result = code == CURLUE_OUT_OF_MEMORY ? GH_SETUP :
+        code != CURLUE_OK || !*host || !**host ? GH_INVALID : client_port(parsed, port);
+    if (result == GH_OK) for (const unsigned char *p = (const unsigned char *)*host; *p; ++p)
+        if (*p <= 32 || *p >= 127) { result = GH_INVALID; break; }
+    curl_url_cleanup(parsed);
+    if (result != GH_OK) { curl_free(*host); *host = NULL; *port = 0; }
+    return result;
+}
+
+int64_t gh_request_engine(CURL **storage, const char *bound_host, int64_t bound_port,
+                   gh_input url, int64_t method, gh_input packed, gh_input upload,
                    int64_t timeout_ms, int64_t allow_http, gh_output out,
                    gh_output headers, gh_metadata meta) {
     if (meta.len != 4 || !meta.data ||
@@ -119,6 +182,7 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     bool https = url.len >= 8 && !memcmp(url.data, "https://", 8);
     bool http = url.len >= 7 && !memcmp(url.data, "http://", 7);
     if (!https && !(http && allow_http)) return GH_INVALID;
+    if (bound_host && (!https || method != 0 || upload.len)) return GH_INVALID;
     int64_t authority = https ? 8 : 7;
     if (url.len <= authority || url.data[authority] == '/' || url.data[authority] == '?') return GH_INVALID;
     char address[8193];
@@ -134,21 +198,31 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
         if (wire_bytes > 65536) return GH_INVALID;
         pos += n + 1;
     }
-    if (gh_ensure_initialized() != 0) return GH_SETUP;
-    const curl_version_info_data *version = curl_version_info(CURLVERSION_NOW);
-    if (version->version_num < 0x075500 || !(version->features & CURL_VERSION_SSL) || !(version->features & CURL_VERSION_ASYNCHDNS) || !(version->features & CURL_VERSION_THREADSAFE)) return GH_SETUP;
+    int64_t ready = transport_ready();
+    if (ready != GH_OK) return ready;
     CURLU *parsed = curl_url();
     if (!parsed) return GH_SETUP;
     CURLUcode uc = curl_url_set(parsed, CURLUPART_URL, address, CURLU_DISALLOW_USER);
     char *host = NULL;
     if (uc == CURLUE_OK) uc = curl_url_get(parsed, CURLUPART_HOST, &host, 0);
     bool valid = uc == CURLUE_OK && host && *host;
+    int64_t origin_result = GH_OK;
+    if (valid && bound_host) {
+        int64_t port = 0;
+        origin_result = client_port(parsed, &port);
+        if (origin_result == GH_OK && (!same_host(host, bound_host) || port != bound_port)) origin_result = GH_INVALID;
+    }
     curl_free(host); curl_url_cleanup(parsed);
     if (uc == CURLUE_OUT_OF_MEMORY) return GH_SETUP;
     if (!valid) return GH_INVALID;
+    if (origin_result != GH_OK) return origin_result;
 
-    CURL *curl = curl_easy_init();
-    if (!curl) return GH_SETUP;
+    CURL *curl = *storage;
+    if (!curl) {
+        curl = curl_easy_init();
+        if (!curl) return GH_SETUP;
+        *storage = curl;
+    }
     struct curl_slist *list = NULL, *tail = NULL;
     int64_t result = GH_SETUP;
     CURLcode code = CURLE_OK;
@@ -184,7 +258,7 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     if (!list) list = next;
 #define SET(option, value) do { code = curl_easy_setopt(curl, option, value); if (code != CURLE_OK) goto done; } while (0)
     SET(CURLOPT_URL, address);
-    SET(CURLOPT_PROTOCOLS_STR, allow_http ? "http,https" : "https");
+    SET(CURLOPT_PROTOCOLS_STR, !bound_host && allow_http ? "http,https" : "https");
     SET(CURLOPT_REDIR_PROTOCOLS_STR, "https");
     SET(CURLOPT_FOLLOWLOCATION, 0L);
     SET(CURLOPT_PROXY, "");
@@ -199,6 +273,12 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     SET(CURLOPT_WRITEDATA, &body);
     SET(CURLOPT_HEADERFUNCTION, receive_header);
     SET(CURLOPT_HEADERDATA, &head);
+    if (bound_host) {
+        SET(CURLOPT_HTTP_VERSION, (long)CURL_HTTP_VERSION_1_1);
+        SET(CURLOPT_MAXCONNECTS, 1L);
+        SET(CURLOPT_HTTPAUTH, (long)CURLAUTH_NONE);
+        SET(CURLOPT_PROXYAUTH, (long)CURLAUTH_NONE);
+    }
     if (method) {
         SET(CURLOPT_POST, 1L);
         SET(CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)upload.len);
@@ -215,7 +295,19 @@ int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input uploa
     if (result == GH_OK) { meta.data[2] = (int64_t)body.used; meta.data[3] = (int64_t)head.bytes.used; }
 done:
     meta.data[0] = code;
-    curl_slist_free_all(list); curl_easy_cleanup(curl);
+    /* Remove borrowed callbacks/header/body pointers before returning a cached
+     * handle. Completed requests retain only backend connection/cache state. */
+    if (bound_host) curl_easy_reset(curl);
+    if (!bound_host || result != GH_OK) { curl_easy_cleanup(curl); *storage = NULL; }
+    curl_slist_free_all(list);
     return result;
 #undef SET
+}
+
+int64_t gh_request(gh_input url, int64_t method, gh_input packed, gh_input upload,
+                   int64_t timeout_ms, int64_t allow_http, gh_output out,
+                   gh_output headers, gh_metadata meta) {
+    CURL *storage = NULL;
+    return gh_request_engine(&storage, NULL, 0, url, method, packed, upload,
+        timeout_ms, allow_http, out, headers, meta);
 }
